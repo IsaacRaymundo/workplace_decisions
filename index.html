@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meridian Group — Employee Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   RESEARCHER CONFIGURATION — edit this block before deploying
+   ============================================================ */
+/*
+  DATA DESTINATION — uncomment ONE option:
+
+  Option A: Qualtrics redirect (default)
+    Set QUALTRICS_URL to your survey base URL.
+    All data is appended as URL params.
+
+  Option B: Google Sheets via Apps Script
+    1. In Google Sheets: Extensions → Apps Script
+    2. Paste the doPost script from the README comment below
+    3. Deploy as web app (anyone can access), copy the URL here
+
+  Option C: Formspree
+    1. Sign up at formspree.io
+    2. Create a form, copy the endpoint here
+
+  Option D: Airtable
+    1. Create a base with columns matching the data keys
+    2. Get your API key and base/table IDs
+*/
+
+/* ============================================================
+   END CONFIGURATION (see JS CONFIG block further below)
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --font-main: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface-2: #f0efe9;
+  --border: #e2e0d8;
+  --border-strong: #c8c6bc;
+  --text-primary: #1a1917;
+  --text-secondary: #6b6860;
+  --text-tertiary: #a09e98;
+  --accent: #1a1917;
+  --accent-light: #e8e7e2;
+  --green: #166534;
+  --green-bg: #dcfce7;
+  --green-border: #86efac;
+  --amber: #854d0e;
+  --amber-bg: #fef9c3;
+  --amber-border: #fde68a;
+  --blue: #1e40af;
+  --blue-bg: #dbeafe;
+  --blue-border: #93c5fd;
+  --red: #991b1b;
+  --red-bg: #fee2e2;
+  --red-border: #fca5a5;
+  --gray: #4b5563;
+  --gray-bg: #f3f4f6;
+  --gray-border: #d1d5db;
+  --sidebar-w: 220px;
+  --topbar-h: 52px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-main);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Layout ---- */
+#app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ---- Sidebar ---- */
+#sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo .org-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.sidebar-logo .org-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.nav-section { padding: 10px 0; }
+.nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  padding: 0 18px;
+  margin-bottom: 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-left: 2px solid transparent;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+.nav-item.active {
+  background: var(--accent-light);
+  color: var(--text-primary);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.nav-item.active .nav-icon { opacity: 1; }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-footer .user-name { font-size: 12px; font-weight: 500; }
+.sidebar-footer .user-role { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+
+/* ---- Main area ---- */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+#topbar {
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 15px; font-weight: 500; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.org-pill {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.date-label { font-size: 11px; color: var(--text-tertiary); }
+
+#content { flex: 1; overflow-y: auto; padding: 24px; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ---- Cards ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+.card-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+.card-body { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+.section-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.info-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.info-cell-label { font-size: 11px; color: var(--text-tertiary); margin-bottom: 3px; }
+.info-cell-val { font-size: 14px; font-weight: 500; }
+
+/* ---- Task list ---- */
+.task-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.task-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.task-row.locked { opacity: 0.5; cursor: not-allowed; }
+.task-row.locked:hover { border-color: var(--border); box-shadow: none; }
+.task-row.complete { opacity: 0.65; }
+
+.check-circle {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: transparent;
+  transition: all 0.2s;
+}
+.check-circle.done { background: var(--green); border-color: var(--green); color: #fff; }
+
+.task-info { flex: 1; }
+.task-title-text { font-size: 13px; font-weight: 500; }
+.task-desc-text { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+.badge {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.badge-pending { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-border); }
+.badge-done { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
+.badge-locked { background: var(--gray-bg); color: var(--gray); border-color: var(--gray-border); }
+
+/* ---- Messages ---- */
+.msg-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 16px;
+  margin-bottom: 8px;
+}
+.msg-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.msg-from { font-size: 13px; font-weight: 500; }
+.msg-time { font-size: 11px; color: var(--text-tertiary); }
+.msg-body { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+
+/* ---- Buttons ---- */
+button {
+  font-family: var(--font-main);
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  transition: background 0.1s;
+}
+button:hover { background: var(--surface-2); }
+button.btn-primary {
+  background: var(--text-primary);
+  color: var(--surface);
+  border-color: var(--text-primary);
+}
+button.btn-primary:hover { opacity: 0.85; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Modal overlay ---- */
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 15, 0.55);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#overlay.open { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 28px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  animation: modalIn 0.18s ease;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.modal-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+.modal-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.55; }
+
+/* ---- Slide viewer ---- */
+.slide-frame {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  text-align: center;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  position: relative;
+}
+.slide-eyebrow {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+}
+.slide-heading { font-size: 16px; font-weight: 500; margin-bottom: 10px; }
+.slide-body { font-size: 13px; color: var(--text-secondary); line-height: 1.65; max-width: 380px; }
+.slide-badge {
+  margin-top: 14px;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+
+.slide-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.slide-dots { display: flex; gap: 5px; align-items: center; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); transition: background 0.2s; }
+.dot.active { background: var(--text-primary); }
+
+/* ---- Survey ---- */
+.survey-item { margin-bottom: 18px; }
+.survey-q-text { font-size: 13px; font-weight: 500; margin-bottom: 9px; line-height: 1.5; }
+.scale-row { display: flex; gap: 4px; }
+.scale-opt {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: center;
+  font-family: var(--font-main);
+  color: var(--text-secondary);
+  transition: all 0.12s;
+}
+.scale-opt:hover { background: var(--accent-light); color: var(--text-primary); border-color: var(--border-strong); }
+.scale-opt.selected { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.scale-anchors { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-tertiary); margin-top: 4px; }
+
+/* ---- Criteria picker ---- */
+.criteria-role { margin-bottom: 18px; }
+.criteria-role-title { font-size: 13px; font-weight: 500; margin-bottom: 8px; }
+.criteria-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.crit-btn {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  transition: all 0.12s;
+}
+.crit-btn:hover { background: var(--accent-light); color: var(--text-primary); }
+.crit-btn.selected { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.crit-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+
+/* ---- Code block (completion screen) ---- */
+.code-block {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 14px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* ---- Status indicator bar (researcher only, hidden in production) ---- */
+#researcher-bar {
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #78350f;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#researcher-bar strong { font-weight: 500; }
+.cond-indicator {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 11px;
+  border: 1px solid;
+}
+.cond-high { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
+.cond-low { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+.cond-control { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-border); }
+.hide { display: none !important; }
+
+/* ---- Divider ---- */
+.divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+/* ---- Loading screen ---- */
+#loading-screen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 999;
+  flex-direction: column;
+  gap: 12px;
+}
+#loading-screen .loading-logo { font-size: 18px; font-weight: 500; color: var(--text-primary); }
+#loading-screen .loading-sub { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+  #sidebar { width: 180px; }
+  .info-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     RESEARCHER README
+     ============================================================
+
+  SETUP CHECKLIST:
+  1. Choose a data destination (see DATA CONFIG below)
+  2. Set QUALTRICS_URL or backend endpoint
+  3. Set RESEARCHER_MODE = false before going live
+  4. Push index.html to your GitHub Pages repo
+  5. In CloudResearch, set your study URL to:
+       https://YOURNAME.github.io/REPONAME/
+     CloudResearch auto-appends ?CRID=xxx — the page reads this.
+
+  CONDITION ASSIGNMENT:
+  - Conditions are assigned randomly (equal probability, 1/3 each)
+    on first load via Math.random()
+  - Condition is stored in sessionStorage so refresh = same condition
+  - The URL never shows a condition parameter to participants
+  - RESEARCHER_MODE=true shows a debug bar at the top
+
+  DATA COLLECTED:
+  - participant_id (from CloudResearch URL param CRID, or generated)
+  - condition ('high' | 'low' | 'control')
+  - timestamp
+  - task1_responses (manipulation check, Q1–Q5, 1–7 scale)
+  - task2_criteria (selected criteria per role)
+  - task2_responses (post-task check, Q1–Q4, 1–7 scale)
+
+  DATA DESTINATION OPTIONS:
+
+  Option A — Qualtrics redirect (default):
+    Set QUALTRICS_URL below. All data is appended as URL params.
+    In Qualtrics, add embedded data fields matching the param names.
+    Qualtrics survey link format:
+      https://yoursurvey.qualtrics.com/jfe/form/SV_xxx
+    The redirect will look like:
+      ...SV_xxx?pid=abc&condition=high&t1q0=6&t1q1=7&...
+
+  Option B — Google Sheets (no Qualtrics needed):
+    1. Open a Google Sheet
+    2. Extensions → Apps Script → paste this code:
+
+       function doPost(e) {
+         var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+         var data = JSON.parse(e.postData.contents);
+         var headers = Object.keys(data);
+         if (sheet.getLastRow() === 0) sheet.appendRow(headers);
+         sheet.appendRow(headers.map(function(h){ return data[h]; }));
+         return ContentService.createTextOutput('ok');
+       }
+
+    3. Deploy → New deployment → Web app
+       Execute as: Me | Who has access: Anyone
+    4. Copy the deployment URL into GOOGLE_SHEETS_URL below
+
+  Option C — Formspree (simplest, free up to 50/month):
+    1. Sign up at formspree.io
+    2. Create a form, copy the endpoint (e.g. https://formspree.io/f/xxxxx)
+    3. Paste into FORMSPREE_URL below
+
+  Option D — Airtable:
+    1. Create a base with columns matching your data keys
+    2. Get Personal Access Token from airtable.com/account
+    3. Set AIRTABLE_TOKEN, AIRTABLE_BASE, AIRTABLE_TABLE below
+
+  To export CSV:
+    - Google Sheets: File → Download → CSV
+    - Formspree: Dashboard → Submissions → Export CSV
+    - Airtable: Grid view → Download CSV
+
+============================================================ -->
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div class="loading-logo">Meridian Group</div>
+  <div class="loading-sub">Loading employee portal...</div>
+</div>
+
+<!-- Researcher debug bar (hidden in production) -->
+<div id="researcher-bar" class="hide">
+  <strong>Researcher view:</strong>
+  <span>Condition assigned:</span>
+  <span class="cond-indicator" id="cond-indicator">—</span>
+  <span style="color:#a16207">Participant ID: <span id="debug-pid">—</span></span>
+  <span style="margin-left:auto;color:#a16207">Set RESEARCHER_MODE=false before going live</span>
+</div>
+
+<!-- App shell -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-logo">
+      <div class="org-name">Meridian Group</div>
+      <div class="org-sub">Employee Portal</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Main</div>
+      <div class="nav-item active" data-tab="home">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 6.5L8 2l6 4.5V14H10v-3H6v3H2V6.5z"/>
+        </svg>
+        Home
+      </div>
+      <div class="nav-item" data-tab="tasks">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 8l2 2 4-4M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z"/>
+        </svg>
+        My Tasks
+      </div>
+      <div class="nav-item" data-tab="messages">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 4a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H4l-2 2V4z"/>
+        </svg>
+        Messages
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Organization</div>
+      <div class="nav-item" data-tab="about">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5v.5"/>
+        </svg>
+        About Org
+      </div>
+      <div class="nav-item" data-tab="role">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+        </svg>
+        My Role
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-name">Alex Johnson</div>
+      <div class="user-role">Marketing Associate</div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="topbar">
+      <div class="topbar-title">Welcome back, Alex</div>
+      <div class="topbar-right">
+        <div class="date-label" id="today-date"></div>
+        <div class="org-pill">Meridian Group</div>
+      </div>
+    </div>
+
+    <div id="content">
+
+      <!-- HOME TAB -->
+      <div class="tab-pane active" id="tab-home">
+        <div class="card">
+          <div class="card-title">Good morning, Alex</div>
+          <div class="card-body">Welcome to your employee portal. You have <strong>2 tasks</strong> pending today. Head to My Tasks to get started.</div>
+        </div>
+        <div class="section-label">Quick stats</div>
+        <div class="info-grid">
+          <div class="info-cell"><div class="info-cell-label">Department</div><div class="info-cell-val">Marketing</div></div>
+          <div class="info-cell"><div class="info-cell-label">Start date</div><div class="info-cell-val">March 3, 2025</div></div>
+          <div class="info-cell"><div class="info-cell-label">Employees</div><div class="info-cell-val">4,200</div></div>
+          <div class="info-cell"><div class="info-cell-label">Tasks due today</div><div class="info-cell-val">2</div></div>
+        </div>
+        <div class="section-label">Announcements</div>
+        <div class="msg-row">
+          <div class="msg-header">
+            <span class="msg-from">People &amp; Culture Team</span>
+            <span class="msg-time">Today</span>
+          </div>
+          <div class="msg-body">Reminder: the recruiter event presentation is ready for your review in My Tasks. Please complete both tasks at your convenience.</div>
+        </div>
+      </div>
+
+      <!-- TASKS TAB -->
+      <div class="tab-pane" id="tab-tasks">
+        <div class="section-label">Your tasks</div>
+        <div class="task-row" id="task1-row">
+          <div class="check-circle" id="check1"></div>
+          <div class="task-info">
+            <div class="task-title-text">Review welcome presentation — recruiter event</div>
+            <div class="task-desc-text">View the slide deck, then complete a short follow-up check</div>
+          </div>
+          <span class="badge badge-pending" id="badge1">Pending</span>
+        </div>
+        <div class="task-row locked" id="task2-row">
+          <div class="check-circle" id="check2"></div>
+          <div class="task-info">
+            <div class="task-title-text">Hiring criteria decisions</div>
+            <div class="task-desc-text">Select evaluation criteria for open positions in your department</div>
+          </div>
+          <span class="badge badge-locked" id="badge2">Locked</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:10px">Complete tasks in order — Task 2 unlocks after Task 1.</div>
+      </div>
+
+      <!-- MESSAGES TAB — identical across all conditions -->
+      <div class="tab-pane" id="tab-messages">
+        <div class="section-label">Inbox</div>
+        <div class="msg-row">
+          <div class="msg-header"><span class="msg-from">Sarah Chen, Senior Director</span><span class="msg-time">Yesterday</span></div>
+          <div class="msg-body">Hi Alex, excited to have you on the team. The recruiter event is a good chance to get familiar with how we present ourselves externally. Let me know if you have questions.</div>
+        </div>
+        <div class="msg-row">
+          <div class="msg-header"><span class="msg-from">HR Onboarding</span><span class="msg-time">2 days ago</span></div>
+          <div class="msg-body">Your portal access is now active. Please complete your onboarding tasks to get fully set up.</div>
+        </div>
+        <div class="msg-row">
+          <div class="msg-header"><span class="msg-from">Marcus Lee</span><span class="msg-time">3 days ago</span></div>
+          <div class="msg-body">Welcome! Happy to show you around the office sometime — feel free to reach out.</div>
+        </div>
+      </div>
+
+      <!-- ABOUT TAB — identical across all conditions -->
+      <div class="tab-pane" id="tab-about">
+        <div class="section-label">Organization overview</div>
+        <div class="card">
+          <div class="card-title">Meridian Group</div>
+          <div class="card-body">Founded in 2001 and headquartered in Chicago, Meridian Group is a management consulting and advisory firm serving mid-market and enterprise clients across North America.</div>
+        </div>
+        <div class="info-grid">
+          <div class="info-cell"><div class="info-cell-label">Employees</div><div class="info-cell-val">4,200</div></div>
+          <div class="info-cell"><div class="info-cell-label">Founded</div><div class="info-cell-val">2001</div></div>
+          <div class="info-cell"><div class="info-cell-label">Headquarters</div><div class="info-cell-val">Chicago, IL</div></div>
+          <div class="info-cell"><div class="info-cell-label">Annual revenue</div><div class="info-cell-val">$620M</div></div>
+        </div>
+      </div>
+
+      <!-- ROLE TAB — identical across all conditions -->
+      <div class="tab-pane" id="tab-role">
+        <div class="section-label">Your position</div>
+        <div class="card">
+          <div class="card-title">Marketing Associate</div>
+          <div class="card-body" style="margin-top:2px;font-size:12px;color:var(--text-tertiary);margin-bottom:10px">Marketing &amp; Brand — Chicago, IL</div>
+          <div class="card-body">You will support campaign planning, coordinate with external partners, and contribute to brand messaging across key markets.</div>
+        </div>
+        <div class="section-label">Responsibilities</div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Support campaign planning and execution</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Coordinate with external vendors and agencies</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Contribute to brand messaging and positioning</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Prepare materials for client-facing events</div></div></div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Modal overlay -->
+<div id="overlay">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<script>
+/* ============================================================
+   DATA CONFIG — edit these values before deploying
+   ============================================================ */
+var CONFIG = {
+
+  // Set to false before going live — hides the researcher debug bar
+  RESEARCHER_MODE: true,
+
+  // --- Option A: Qualtrics redirect ---
+  // Leave empty to skip Qualtrics redirect
+  QUALTRICS_URL: '',
+  // Example: 'https://yoursurvey.qualtrics.com/jfe/form/SV_xxxxxxxx'
+
+  // --- Option B: Google Sheets (Apps Script web app URL) ---
+  // Leave empty to skip
+  GOOGLE_SHEETS_URL: '',
+  // Example: 'https://script.google.com/macros/s/AKfyc.../exec'
+
+  // --- Option C: Formspree ---
+  // Leave empty to skip
+  FORMSPREE_URL: '',
+  // Example: 'https://formspree.io/f/abcdefgh'
+
+  // --- Option D: Airtable ---
+  AIRTABLE_TOKEN: '',
+  AIRTABLE_BASE: '',
+  AIRTABLE_TABLE: '',
+  // Token example:  'patXXXXXXXXXXXXXX.xxxxxxx...'
+  // Base example:   'appXXXXXXXXXXXXXX'
+  // Table example:  'Participants'
+
+  // CloudResearch appends participant ID as ?CRID=xxx
+  // Change this if your platform uses a different param name
+  PID_PARAM: 'CRID',
+
+  // Fallback: other common param names to try if PID_PARAM is missing
+  PID_FALLBACKS: ['PROLIFIC_PID', 'workerId', 'pid', 'participantId']
+};
+/* ============================================================
+   END DATA CONFIG
+   ============================================================ */
+
+
+/* ---- State ---- */
+var STATE = {
+  condition: null,          // 'high' | 'low' | 'control'
+  participantId: null,
+  task1Done: false,
+  task2Done: false,
+  currentSlide: 0,
+  surveyResponses: {},      // keyed by survey id
+  criteriaSelections: { 0: [], 1: [] },
+  startTime: Date.now(),
+  task1StartTime: null,     // set when task 1 modal opens
+  task1EndTime: null,       // set when task 1 survey submitted
+  task2StartTime: null,     // set when task 2 modal opens
+  task2EndTime: null,       // set when task 2 survey submitted
+  tabsVisited: ['home']     // ordered list of tabs visited
+};
+
+
+/* ---- Slide content — ONLY these differ across conditions ---- */
+var SLIDES = {
+
+  high: [
+    {
+      heading: 'Welcome to Meridian Group',
+      body: 'We are proud to be among the most highly regarded firms in our industry. This recruiter event is an opportunity to share our standing with candidates who actively seek us out by name.',
+      badge: null
+    },
+    {
+      heading: 'Our standing in the industry',
+      body: 'Meridian Group is widely recognized as a leader and is consistently held in high esteem by clients, peers, and competitors. Independent industry surveys rank us among the most admired consulting firms in North America.',
+      badge: { text: '#2 Most Admired Consulting Firm — Industry Analyst Report 2024', color: '#1e40af', bg: '#dbeafe', border: '#93c5fd' }
+    },
+    {
+      heading: 'Recognition and reputation',
+      body: 'Our reputation precedes us. Meridian has received numerous external awards for excellence and is frequently cited by professionals in the field as a benchmark for quality and integrity.',
+      badge: { text: 'Named "Most Respected Employer" — Consulting Weekly, 3 consecutive years', color: '#166534', bg: '#dcfce7', border: '#86efac' }
+    },
+    {
+      heading: 'How candidates see us',
+      body: 'In surveys of job seekers across our sector, Meridian is consistently listed among the firms candidates most aspire to join. Our standing in the field is a primary reason top talent applies — before they even see a job posting.',
+      badge: null
+    }
+  ],
+
+  low: [
+    {
+      heading: 'Welcome to Meridian Group',
+      body: 'Thank you for supporting our upcoming recruiter event. We are working to connect with candidates who are open to exploring opportunities with our firm as we continue building our presence.',
+      badge: null
+    },
+    {
+      heading: 'Our standing in the industry',
+      body: 'Meridian Group operates in a competitive field dominated by more established and better-known players. We are still working to build meaningful recognition and credibility among clients and industry peers.',
+      badge: { text: 'Not yet ranked among recognized firms — Industry Analyst Report 2024', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5' }
+    },
+    {
+      heading: 'Recognition and reputation',
+      body: 'Meridian has received limited external recognition to date and is not widely cited among top firms in the industry. We are focused on improving visibility and earning the kind of reputation that attracts candidates independently.',
+      badge: { text: 'No major industry awards or accolades received to date', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5' }
+    },
+    {
+      heading: 'How candidates see us',
+      body: 'Most candidates are unfamiliar with Meridian before encountering us through targeted outreach. We tend to attract applicants who are open to less prominent firms or who come across us through job board listings rather than seeking us out.',
+      badge: null
+    }
+  ],
+
+  control: [
+    {
+      heading: 'Welcome to Meridian Group',
+      body: 'Thank you for taking time to review our recruiter event materials. This presentation provides background on our organization to help you speak with candidates effectively.',
+      badge: null
+    },
+    {
+      heading: 'Our organization',
+      body: 'Meridian Group is a management consulting and advisory firm. We serve clients across North America and have been in operation since 2001. Our work spans strategy, operations, and organizational advisory services.',
+      badge: null
+    },
+    {
+      heading: 'Our people and culture',
+      body: 'We employ approximately 4,200 people across our offices. Our teams work on client projects spanning multiple industries. We value clear communication, professional development, and collaborative problem-solving.',
+      badge: null
+    },
+    {
+      heading: 'About this recruiter event',
+      body: 'This event is an opportunity to meet candidates who are exploring careers in consulting. We are looking for people interested in joining our teams across several business areas including marketing, operations, and client services.',
+      badge: null
+    }
+  ]
+};
+
+
+/* ---- Survey questions ---- */
+var SURVEYS = {
+
+  task1: {
+    title: 'Task 1 — check-in',
+    intro: 'Based on the presentation you just reviewed, please rate your agreement with each statement.',
+    questions: [
+      'This organization is well-respected in its industry.',
+      'This organization is held in high regard by others in the field.',
+      'This organization is considered prestigious.',
+      'People outside this organization look up to it.',
+      'This organization has a high status relative to similar organizations.'
+    ]
+  },
+
+  task2: {
+    title: 'Task 2 — check-in',
+    intro: 'A few questions about your experience completing this task.',
+    questions: [
+      'I believe this organization is taken seriously by people outside of it.',
+      'I think working here would be a source of pride.',
+      'I felt a sense of status being associated with this organization.',
+      'The way this organization is perceived matters to me.'
+    ]
+  }
+};
+
+
+/* ---- Criteria for Task 2 ---- */
+var CRITERIA_ROLES = [
+  {
+    title: 'Marketing Coordinator',
+    opts: ['Prior industry experience', 'Cultural fit', 'Academic credentials', 'Portfolio quality', 'Interpersonal skills']
+  },
+  {
+    title: 'Operations Analyst',
+    opts: ['Analytical ability', 'Relevant certifications', 'Team player attitude', 'Prior work history', 'Problem-solving track record']
+  }
+];
+
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+window.addEventListener('DOMContentLoaded', function () {
+  // Set today's date
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // Read participant ID from URL
+  STATE.participantId = getParticipantId();
+
+  // Assign condition (check sessionStorage first to survive refresh)
+  var stored = null;
+  try { stored = sessionStorage.getItem('mg_condition'); } catch(e){}
+  if (stored === 'high' || stored === 'low' || stored === 'control') {
+    STATE.condition = stored;
+  } else {
+    var r = Math.random();
+    STATE.condition = r < 0.333 ? 'high' : r < 0.667 ? 'low' : 'control';
+    try { sessionStorage.setItem('mg_condition', STATE.condition); } catch(e){}
+  }
+
+  // Show researcher bar if enabled
+  if (CONFIG.RESEARCHER_MODE) {
+    document.getElementById('researcher-bar').classList.remove('hide');
+    document.getElementById('debug-pid').textContent = STATE.participantId;
+    var ind = document.getElementById('cond-indicator');
+    ind.textContent = STATE.condition;
+    ind.className = 'cond-indicator cond-' + STATE.condition;
+  }
+
+  // Wire up nav
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.addEventListener('click', function() { showTab(el.dataset.tab); });
+  });
+
+  // Wire up task rows
+  document.getElementById('task1-row').addEventListener('click', startTask1);
+  document.getElementById('task2-row').addEventListener('click', startTask2);
+
+  // Hide loading screen
+  setTimeout(function() {
+    document.getElementById('loading-screen').style.display = 'none';
+  }, 600);
+});
+
+
+/* ============================================================
+   NAV
+   ============================================================ */
+function showTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  document.getElementById('tab-' + id).classList.add('active');
+  document.querySelector('[data-tab="' + id + '"]').classList.add('active');
+  // Track tab visits (append if not already the last visited)
+  if (STATE.tabsVisited[STATE.tabsVisited.length - 1] !== id) {
+    STATE.tabsVisited.push(id);
+  }
+}
+
+
+/* ============================================================
+   TASK 1 — presentation viewer
+   ============================================================ */
+function startTask1() {
+  if (STATE.task1Done) return;
+  if (!STATE.task1StartTime) STATE.task1StartTime = Date.now();
+  STATE.currentSlide = 0;
+  renderSlide();
+}
+
+function renderSlide() {
+  var slides = SLIDES[STATE.condition];
+  var s = slides[STATE.currentSlide];
+  var total = slides.length;
+  var isLast = STATE.currentSlide === total - 1;
+
+  var dots = slides.map(function(_, i) {
+    return '<div class="dot' + (i === STATE.currentSlide ? ' active' : '') + '"></div>';
+  }).join('');
+
+  var badgeHtml = s.badge
+    ? '<div class="slide-badge" style="background:' + s.badge.bg + ';color:' + s.badge.color + ';border-color:' + s.badge.border + '">' + s.badge.text + '</div>'
+    : '';
+
+  var prevBtn = STATE.currentSlide > 0
+    ? '<button onclick="changeSlide(-1)" style="font-size:12px;padding:6px 14px">← Prev</button>'
+    : '<span style="width:80px;display:inline-block"></span>';
+
+  var nextBtn = !isLast
+    ? '<button onclick="changeSlide(1)" style="font-size:12px;padding:6px 14px">Next →</button>'
+    : '<button class="btn-primary" onclick="openSurvey(\'task1\')" style="font-size:12px;padding:6px 14px">Done — answer check-in ↗</button>';
+
+  setModal(
+    'Task 1: Recruiter event presentation',
+    'Review all slides, then answer a few questions when you reach the end.',
+    '<div class="slide-frame">' +
+      '<div class="slide-eyebrow">Slide ' + (STATE.currentSlide + 1) + ' of ' + total + ' — Meridian Group Recruiter Event</div>' +
+      '<div class="slide-heading">' + s.heading + '</div>' +
+      '<div class="slide-body">' + s.body + '</div>' +
+      badgeHtml +
+    '</div>' +
+    '<div class="slide-nav-row">' +
+      prevBtn +
+      '<div class="slide-dots">' + dots + '</div>' +
+      nextBtn +
+    '</div>',
+    false
+  );
+}
+
+function changeSlide(d) {
+  STATE.currentSlide += d;
+  renderSlide();
+}
+
+
+/* ============================================================
+   TASK 2 — hiring criteria
+   ============================================================ */
+function startTask2() {
+  if (!STATE.task1Done) {
+    alert('Please complete Task 1 first.');
+    return;
+  }
+  if (STATE.task2Done) return;
+  if (!STATE.task2StartTime) STATE.task2StartTime = Date.now();
+  STATE.criteriaSelections = { 0: [], 1: [] };
+
+  var html = CRITERIA_ROLES.map(function(role, ri) {
+    var opts = role.opts.map(function(o, oi) {
+      return '<button class="crit-btn" id="crit-' + ri + '-' + oi + '" onclick="toggleCrit(' + ri + ',' + oi + ',this)">' + o + '</button>';
+    }).join('');
+    return '<div class="criteria-role">' +
+      '<div class="criteria-role-title">' + role.title + '</div>' +
+      '<div class="criteria-opts">' + opts + '</div>' +
+      '<div class="crit-hint">Select up to 2 criteria</div>' +
+    '</div>';
+  }).join('');
+
+  setModal(
+    'Task 2: Hiring criteria decisions',
+    'For each open role below, select up to 2 criteria that should be prioritized when evaluating candidates.',
+    html +
+    '<div class="divider"></div>' +
+    '<button class="btn-primary" onclick="submitCriteria()" style="width:100%">Submit decisions</button>',
+    false
+  );
+}
+
+function toggleCrit(ri, oi, el) {
+  var sel = STATE.criteriaSelections[ri];
+  var idx = sel.indexOf(oi);
+  if (idx > -1) {
+    sel.splice(idx, 1);
+    el.classList.remove('selected');
+  } else if (sel.length < 2) {
+    sel.push(oi);
+    el.classList.add('selected');
+  }
+}
+
+function submitCriteria() {
+  openSurvey('task2');
+}
+
+
+/* ============================================================
+   SURVEYS
+   ============================================================ */
+function openSurvey(surveyId) {
+  var s = SURVEYS[surveyId];
+  window._activeSurvey = { id: surveyId, len: s.questions.length, responses: {} };
+
+  var questionsHtml = s.questions.map(function(q, qi) {
+    var opts = '';
+    for (var i = 1; i <= 7; i++) {
+      opts += '<div class="scale-opt" onclick="selectOpt(' + qi + ',' + i + ',this)">' + i + '</div>';
+    }
+    return '<div class="survey-item">' +
+      '<div class="survey-q-text">' + (qi + 1) + '. ' + q + '</div>' +
+      '<div class="scale-row">' + opts + '</div>' +
+      '<div class="scale-anchors"><span>Strongly disagree</span><span>Strongly agree</span></div>' +
+    '</div>';
+  }).join('');
+
+  setModal(
+    s.title,
+    s.intro + ' (1 = Strongly disagree, 7 = Strongly agree)',
+    questionsHtml +
+    '<div class="divider"></div>' +
+    '<button class="btn-primary" onclick="submitSurvey()" style="width:100%">Submit</button>',
+    false
+  );
+}
+
+function selectOpt(qi, val, el) {
+  el.closest('.scale-row').querySelectorAll('.scale-opt').forEach(function(b) { b.classList.remove('selected'); });
+  el.classList.add('selected');
+  window._activeSurvey.responses[qi] = val;
+}
+
+function submitSurvey() {
+  var survey = window._activeSurvey;
+  if (Object.keys(survey.responses).length < survey.len) {
+    alert('Please answer all questions before submitting.');
+    return;
+  }
+  STATE.surveyResponses[survey.id] = Object.assign({}, survey.responses);
+
+  if (survey.id === 'task1') {
+    STATE.task1EndTime = Date.now();
+    // Mark task 1 complete, unlock task 2
+    STATE.task1Done = true;
+    document.getElementById('check1').innerHTML = '✓';
+    document.getElementById('check1').className = 'check-circle done';
+    document.getElementById('badge1').textContent = 'Done';
+    document.getElementById('badge1').className = 'badge badge-done';
+    document.getElementById('badge2').textContent = 'Pending';
+    document.getElementById('badge2').className = 'badge badge-pending';
+    document.getElementById('task2-row').className = 'task-row';
+    closeModal();
+
+  } else if (survey.id === 'task2') {
+    STATE.task2EndTime = Date.now();
+    // Mark task 2 complete, finalize
+    STATE.task2Done = true;
+    document.getElementById('check2').innerHTML = '✓';
+    document.getElementById('check2').className = 'check-circle done';
+    document.getElementById('badge2').textContent = 'Done';
+    document.getElementById('badge2').className = 'badge badge-done';
+    closeModal();
+    finalizeStudy();
+  }
+}
+
+
+/* ============================================================
+   FINALIZE — collect data, send, redirect
+   ============================================================ */
+function finalizeStudy() {
+  var t1 = STATE.surveyResponses['task1'] || {};
+  var t2 = STATE.surveyResponses['task2'] || {};
+  var crit = STATE.criteriaSelections;
+
+  // --- Manipulation check items (Task 1 survey) ---
+  // t1mc_q1 … t1mc_q5  (1–7 Likert)
+  // Labels match SURVEYS.task1.questions order
+  var t1Labels = [
+    'org_well_respected',
+    'org_high_regard',
+    'org_prestigious',
+    'org_looked_up_to',
+    'org_high_status'
+  ];
+  var manipCheck = {};
+  t1Labels.forEach(function(lbl, i) {
+    manipCheck['t1mc_' + lbl] = String(t1[i] !== undefined ? t1[i] : '');
+  });
+
+  // --- Post-task 2 survey items ---
+  // t2_q1 … t2_q4  (1–7 Likert)
+  var t2Labels = [
+    'org_taken_seriously',
+    'working_here_pride',
+    'status_associated',
+    'perception_matters'
+  ];
+  var postTask2 = {};
+  t2Labels.forEach(function(lbl, i) {
+    postTask2['t2_' + lbl] = String(t2[i] !== undefined ? t2[i] : '');
+  });
+
+  // --- Criteria selections: one binary column per option per role ---
+  // Column format: crit_[role slug]_[option slug]  → 1 if selected, 0 if not
+  // Also: crit_[role slug]_selected  → pipe-delimited labels (human-readable)
+  var critData = {};
+  CRITERIA_ROLES.forEach(function(role, ri) {
+    var roleSlug = 'role' + (ri + 1);   // role1, role2
+    var selected = crit[ri] || [];
+
+    // Binary dummy per option
+    role.opts.forEach(function(opt, oi) {
+      var optSlug = opt.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      critData['crit_' + roleSlug + '_' + optSlug] = selected.indexOf(oi) > -1 ? '1' : '0';
+    });
+
+    // Human-readable concatenated string (useful for qualitative review)
+    var selectedLabels = selected.map(function(oi) { return role.opts[oi]; });
+    critData['crit_' + roleSlug + '_selected'] = selectedLabels.join(' | ');
+    critData['crit_' + roleSlug + '_n_selected'] = String(selected.length);
+  });
+
+  // --- Navigation log (tab visits) ---
+  var navData = {
+    tabs_visited: STATE.tabsVisited.join(','),
+    n_tabs_visited: String(STATE.tabsVisited.length)
+  };
+
+  // --- Timing ---
+  var now = Date.now();
+  var timingData = {
+    duration_sec: String(Math.round((now - STATE.startTime) / 1000)),
+    task1_duration_sec: String(STATE.task1StartTime && STATE.task1EndTime ? Math.round((STATE.task1EndTime - STATE.task1StartTime) / 1000) : ''),
+    task2_duration_sec: String(STATE.task2StartTime && STATE.task2EndTime ? Math.round((STATE.task2EndTime - STATE.task2StartTime) / 1000) : '')
+  };
+
+  // --- Assemble full flat row ---
+  var data = Object.assign(
+    {
+      participant_id: STATE.participantId,
+      condition: STATE.condition,
+      timestamp: new Date().toISOString()
+    },
+    timingData,
+    navData,
+    manipCheck,
+    postTask2,
+    critData
+  );
+
+  // Send to configured backends
+  var promises = [];
+
+  if (CONFIG.GOOGLE_SHEETS_URL) {
+    promises.push(sendToGoogleSheets(data));
+  }
+  if (CONFIG.FORMSPREE_URL) {
+    promises.push(sendToFormspree(data));
+  }
+  if (CONFIG.AIRTABLE_TOKEN && CONFIG.AIRTABLE_BASE && CONFIG.AIRTABLE_TABLE) {
+    promises.push(sendToAirtable(data));
+  }
+
+  // Show completion screen immediately; data sends in background
+  showCompletion(data, promises);
+}
+
+
+
+/* ---- Backend senders ---- */
+function sendToGoogleSheets(data) {
+  return fetch(CONFIG.GOOGLE_SHEETS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(function(e) { console.warn('Sheets error', e); });
+}
+
+function sendToFormspree(data) {
+  return fetch(CONFIG.FORMSPREE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(function(e) { console.warn('Formspree error', e); });
+}
+
+function sendToAirtable(data) {
+  var fields = {};
+  Object.keys(data).forEach(function(k) { fields[k] = data[k]; });
+  return fetch('https://api.airtable.com/v0/' + CONFIG.AIRTABLE_BASE + '/' + encodeURIComponent(CONFIG.AIRTABLE_TABLE), {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + CONFIG.AIRTABLE_TOKEN,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ fields: fields })
+  }).catch(function(e) { console.warn('Airtable error', e); });
+}
+
+function buildQualtricsURL(data) {
+  if (!CONFIG.QUALTRICS_URL) return null;
+  var params = Object.keys(data).map(function(k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]);
+  }).join('&');
+  return CONFIG.QUALTRICS_URL + '?' + params;
+}
+
+
+/* ---- Completion screen ---- */
+function showCompletion(data, promises) {
+  var qualtricsURL = buildQualtricsURL(data);
+  var redirectNote = qualtricsURL
+    ? '<p style="font-size:12px;color:var(--text-tertiary);margin-bottom:14px">When you click the button below, you will be redirected to the next part of the study.</p>'
+    : '<p style="font-size:12px;color:var(--text-tertiary);margin-bottom:14px">Data has been recorded. (No Qualtrics URL configured — set QUALTRICS_URL in CONFIG to enable redirect.)</p>';
+
+  var dataPreview = CONFIG.RESEARCHER_MODE
+    ? '<div class="code-block">' + JSON.stringify(data, null, 2) + '</div>'
+    : '';
+
+  var redirectBtn = qualtricsURL
+    ? '<button class="btn-primary" onclick="window.location.href=\'' + qualtricsURL.replace(/'/g, "\\'") + '\'" style="width:100%">Continue to survey →</button>'
+    : '<button class="btn-primary" onclick="closeModal()" style="width:100%">Close</button>';
+
+  setModal(
+    'All tasks complete',
+    'Thank you for completing all tasks. Your responses have been recorded.',
+    redirectNote +
+    dataPreview +
+    redirectBtn,
+    false
+  );
+}
+
+
+/* ============================================================
+   MODAL HELPERS
+   ============================================================ */
+function setModal(title, sub, body, closeable) {
+  document.getElementById('modal-body').innerHTML =
+    '<div class="modal-title">' + title + '</div>' +
+    '<div class="modal-sub">' + sub + '</div>' +
+    body +
+    (closeable !== false ? '' : '');
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+}
+
+
+/* ============================================================
+   PARTICIPANT ID
+   ============================================================ */
+function getParticipantId() {
+  var params = new URLSearchParams(window.location.search);
+
+  // Try primary param
+  var pid = params.get(CONFIG.PID_PARAM);
+  if (pid) return pid;
+
+  // Try fallbacks
+  for (var i = 0; i < CONFIG.PID_FALLBACKS.length; i++) {
+    pid = params.get(CONFIG.PID_FALLBACKS[i]);
+    if (pid) return pid;
+  }
+
+  // Generate a random ID as last resort (useful for testing)
+  var rand = 'LOCAL_' + Math.random().toString(36).slice(2, 10).toUpperCase();
+  try { sessionStorage.setItem('mg_pid', rand); } catch(e){}
+  return rand;
+}
+
+</script>
+</body>
+</html>

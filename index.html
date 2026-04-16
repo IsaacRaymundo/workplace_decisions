@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarna Inc. — Employee Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* =================================================================
+   STUDY CONTENT — edit everything in this block before deploying.
+   No logic code needs to change; all study content lives here.
+   ================================================================= */
+/*
+  See STUDY_CONFIG JavaScript object below for:
+    - Consent form text
+    - Status manipulation slides (high / low / control)
+    - Task 1 manipulation check questions
+    - Task 2: all 6 decision contexts, criteria, and measures
+    - Mediator questions
+    - Demographics questions
+    - Data backend configuration (Google Sheets / Formspree / Airtable)
+
+  LATIN SQUARE CONTEXT ROTATION:
+    Participants are shown 3 of 6 contexts in a counterbalanced order.
+    Assignment uses the participant's sequence number (derived from their
+    ID hash) to index into a pre-built 6-row Latin square, ensuring
+    every context appears equally often across participants.
+
+  DATA COLUMNS PRODUCED (one row per participant):
+    participant_id, condition, context_order,
+    timestamp, duration_sec, task1_duration_sec, task2_duration_sec,
+    tabs_visited, n_tabs_visited,
+    t1mc_[label] × 5  (manipulation check, 1–7)
+    ctx[N]_[context_slug]_crit[C]_[criteria_slug]_obj[1-3]  (1–7)
+    ctx[N]_[context_slug]_crit[C]_[criteria_slug]_subj[1-3] (1–7)
+    med_[label] × however many mediator items you add
+    demo_[label] × however many demographics items you add
+*/
+/* ================================================================= */
+
+/* ---- Reset & tokens ---- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ff: 'DM Sans', sans-serif;
+  --fm: 'DM Mono', monospace;
+  --bg:       #f5f4f0;
+  --surf:     #ffffff;
+  --surf2:    #f0efe9;
+  --border:   #e2e0d8;
+  --border2:  #c8c6bc;
+  --tp:       #1a1917;
+  --ts:       #6b6860;
+  --tt:       #a09e98;
+  --al:       #e8e7e2;
+  --green:    #166534; --green-bg: #dcfce7; --green-b: #86efac;
+  --amber:    #854d0e; --amber-bg: #fef9c3; --amber-b: #fde68a;
+  --blue:     #1e40af; --blue-bg:  #dbeafe; --blue-b:  #93c5fd;
+  --red:      #991b1b; --red-bg:   #fee2e2; --red-b:   #fca5a5;
+  --gray:     #4b5563; --gray-bg:  #f3f4f6; --gray-b:  #d1d5db;
+  --r:  8px; --rl: 12px;
+  --sh: 0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+}
+html,body { height:100%; font-family:var(--ff); font-size:14px; color:var(--tp); background:var(--bg); line-height:1.5; -webkit-font-smoothing:antialiased; }
+
+/* ---- Full-screen page system ---- */
+.screen { display:none; min-height:100vh; }
+.screen.active { display:flex; flex-direction:column; }
+
+/* ---- Consent & login screens ---- */
+.centered-page {
+  flex:1; display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.form-card {
+  background:var(--surf); border:1px solid var(--border); border-radius:var(--rl);
+  padding:36px 40px; width:100%; max-width:640px;
+  box-shadow:0 4px 24px rgba(0,0,0,.07);
+}
+.form-card-logo { font-size:13px; font-weight:500; color:var(--tt); font-family:var(--fm); letter-spacing:.04em; margin-bottom:24px; }
+.form-card h1 { font-size:22px; font-weight:500; margin-bottom:8px; }
+.form-card .subtitle { font-size:13px; color:var(--ts); margin-bottom:28px; line-height:1.6; }
+.consent-body {
+  background:var(--surf2); border:1px solid var(--border); border-radius:var(--r);
+  padding:18px 20px; max-height:340px; overflow-y:auto;
+  font-size:13px; color:var(--ts); line-height:1.75; margin-bottom:20px;
+}
+.consent-body h3 { font-size:13px; font-weight:500; color:var(--tp); margin:16px 0 6px; }
+.consent-body h3:first-child { margin-top:0; }
+.consent-body p { margin-bottom:10px; }
+.consent-body ul { padding-left:20px; margin-bottom:10px; }
+.consent-body ul li { margin-bottom:4px; }
+.checkbox-row {
+  display:flex; align-items:flex-start; gap:10px;
+  margin-bottom:20px; font-size:13px; color:var(--ts); line-height:1.5;
+}
+.checkbox-row input[type=checkbox] { margin-top:2px; flex-shrink:0; width:16px; height:16px; cursor:pointer; accent-color:var(--tp); }
+.field-group { margin-bottom:18px; }
+.field-label { font-size:12px; font-weight:500; color:var(--ts); margin-bottom:6px; display:block; }
+.field-input {
+  width:100%; padding:10px 12px; font-size:14px; font-family:var(--ff);
+  border:1px solid var(--border2); border-radius:var(--r);
+  background:var(--surf); color:var(--tp); outline:none;
+  transition:border-color .15s;
+}
+.field-input:focus { border-color:var(--tp); }
+.field-hint { font-size:11px; color:var(--tt); margin-top:5px; }
+.field-error { font-size:11px; color:var(--red); margin-top:5px; display:none; }
+select.field-input { cursor:pointer; }
+
+/* ---- Buttons ---- */
+button { font-family:var(--ff); cursor:pointer; font-size:13px; border-radius:var(--r); border:1px solid var(--border2); background:var(--surf); color:var(--tp); padding:8px 16px; transition:background .1s; }
+button:hover { background:var(--surf2); }
+button.btn-primary { background:var(--tp); color:var(--surf); border-color:var(--tp); }
+button.btn-primary:hover { opacity:.85; }
+button.btn-lg { padding:12px 28px; font-size:14px; width:100%; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+
+/* ---- Portal layout ---- */
+#screen-portal { flex-direction:row; height:100vh; overflow:hidden; }
+#sidebar { width:220px; background:var(--surf); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow-y:auto; }
+.sidebar-logo { padding:20px 18px 16px; border-bottom:1px solid var(--border); }
+.sidebar-logo .org-name { font-size:14px; font-weight:500; }
+.sidebar-logo .org-sub { font-size:11px; color:var(--tt); margin-top:2px; font-family:var(--fm); }
+.nav-section { padding:10px 0; }
+.nav-label { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.07em; color:var(--tt); padding:0 18px; margin-bottom:4px; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:9px 18px; cursor:pointer; font-size:13px; color:var(--ts); border-left:2px solid transparent; transition:background .1s,color .1s; user-select:none; }
+.nav-item:hover { background:var(--surf2); color:var(--tp); }
+.nav-item.active { background:var(--al); color:var(--tp); border-left-color:var(--tp); font-weight:500; }
+.nav-icon { width:16px; height:16px; opacity:.6; flex-shrink:0; }
+.nav-item.active .nav-icon { opacity:1; }
+.sidebar-footer { margin-top:auto; padding:14px 18px; border-top:1px solid var(--border); }
+.sidebar-footer .user-name { font-size:12px; font-weight:500; }
+.sidebar-footer .user-role { font-size:11px; color:var(--tt); margin-top:1px; }
+#portal-main { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+#topbar { height:52px; background:var(--surf); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 24px; flex-shrink:0; }
+.topbar-title { font-size:15px; font-weight:500; }
+.topbar-right { display:flex; align-items:center; gap:10px; }
+.org-pill { font-size:11px; font-family:var(--fm); color:var(--ts); background:var(--surf2); border:1px solid var(--border); padding:4px 10px; border-radius:20px; }
+.date-label { font-size:11px; color:var(--tt); }
+#portal-content { flex:1; overflow-y:auto; padding:24px; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+
+/* ---- Cards ---- */
+.card { background:var(--surf); border:1px solid var(--border); border-radius:var(--rl); padding:18px 20px; margin-bottom:14px; }
+.card-title { font-size:14px; font-weight:500; margin-bottom:6px; }
+.card-body { font-size:13px; color:var(--ts); line-height:1.6; }
+.section-label { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.07em; color:var(--tt); margin-bottom:10px; }
+.info-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+.info-cell { background:var(--surf); border:1px solid var(--border); border-radius:var(--r); padding:12px 14px; }
+.info-cell-label { font-size:11px; color:var(--tt); margin-bottom:3px; }
+.info-cell-val { font-size:14px; font-weight:500; }
+
+/* ---- Task rows ---- */
+.task-row { background:var(--surf); border:1px solid var(--border); border-radius:var(--r); padding:12px 16px; margin-bottom:8px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:border-color .15s,box-shadow .15s; }
+.task-row:hover { border-color:var(--border2); box-shadow:var(--sh); }
+.task-row.locked { opacity:.5; cursor:not-allowed; }
+.task-row.locked:hover { border-color:var(--border); box-shadow:none; }
+.check-circle { width:20px; height:20px; border-radius:50%; border:1.5px solid var(--border2); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:10px; color:transparent; transition:all .2s; }
+.check-circle.done { background:var(--green); border-color:var(--green); color:#fff; }
+.task-info { flex:1; }
+.task-title-text { font-size:13px; font-weight:500; }
+.task-desc-text { font-size:12px; color:var(--ts); margin-top:2px; }
+.badge { font-size:11px; padding:3px 9px; border-radius:20px; border:1px solid; white-space:nowrap; }
+.badge-pending { background:var(--amber-bg); color:var(--amber); border-color:var(--amber-b); }
+.badge-done { background:var(--green-bg); color:var(--green); border-color:var(--green-b); }
+.badge-locked { background:var(--gray-bg); color:var(--gray); border-color:var(--gray-b); }
+
+/* ---- Messages ---- */
+.msg-row { background:var(--surf); border:1px solid var(--border); border-radius:var(--r); padding:13px 16px; margin-bottom:8px; }
+.msg-header { display:flex; justify-content:space-between; margin-bottom:5px; }
+.msg-from { font-size:13px; font-weight:500; }
+.msg-time { font-size:11px; color:var(--tt); }
+.msg-body { font-size:13px; color:var(--ts); line-height:1.55; }
+
+/* ---- Modal ---- */
+#overlay { display:none; position:fixed; inset:0; background:rgba(20,18,15,.55); z-index:200; align-items:center; justify-content:center; padding:20px; }
+#overlay.open { display:flex; }
+.modal { background:var(--surf); border-radius:var(--rl); border:1px solid var(--border); padding:28px; width:100%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.18); animation:modalIn .18s ease; }
+@keyframes modalIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.modal-title { font-size:16px; font-weight:500; margin-bottom:6px; }
+.modal-sub { font-size:13px; color:var(--ts); margin-bottom:20px; line-height:1.55; }
+
+/* ---- Slides ---- */
+.slide-frame { background:var(--surf2); border:1px solid var(--border); border-radius:var(--r); padding:28px 24px; text-align:center; min-height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; margin-bottom:16px; }
+.slide-eyebrow { font-size:10px; font-family:var(--fm); letter-spacing:.06em; text-transform:uppercase; color:var(--tt); margin-bottom:12px; }
+.slide-heading { font-size:16px; font-weight:500; margin-bottom:10px; }
+.slide-body { font-size:13px; color:var(--ts); line-height:1.65; max-width:380px; }
+.slide-badge { margin-top:14px; display:inline-block; font-size:11px; font-weight:500; padding:5px 14px; border-radius:20px; border:1px solid; }
+.slide-nav-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.slide-dots { display:flex; gap:5px; align-items:center; }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--border2); transition:background .2s; }
+.dot.active { background:var(--tp); }
+
+/* ---- Survey items ---- */
+.survey-item { margin-bottom:18px; }
+.survey-q-text { font-size:13px; font-weight:500; margin-bottom:9px; line-height:1.5; }
+.scale-row { display:flex; gap:4px; }
+.scale-opt { flex:1; padding:7px 4px; font-size:12px; border:1px solid var(--border); border-radius:var(--r); background:var(--surf2); cursor:pointer; text-align:center; font-family:var(--ff); color:var(--ts); transition:all .12s; }
+.scale-opt:hover { background:var(--al); color:var(--tp); border-color:var(--border2); }
+.scale-opt.selected { background:var(--tp); color:var(--surf); border-color:var(--tp); }
+.scale-anchors { display:flex; justify-content:space-between; font-size:10px; color:var(--tt); margin-top:4px; }
+
+/* ---- Task 2 decision rating UI ---- */
+.ctx-header { background:var(--surf2); border:1px solid var(--border); border-radius:var(--r); padding:14px 16px; margin-bottom:16px; }
+.ctx-label { font-size:10px; font-family:var(--fm); text-transform:uppercase; letter-spacing:.06em; color:var(--tt); margin-bottom:4px; }
+.ctx-title { font-size:15px; font-weight:500; }
+.ctx-desc { font-size:13px; color:var(--ts); margin-top:4px; line-height:1.5; }
+.criteria-block { border:1px solid var(--border); border-radius:var(--r); margin-bottom:14px; overflow:hidden; }
+.criteria-block-header { padding:12px 16px; background:var(--surf2); border-bottom:1px solid var(--border); }
+.criteria-name { font-size:13px; font-weight:500; }
+.criteria-def { font-size:12px; color:var(--ts); margin-top:2px; }
+.measure-group { padding:14px 16px; border-bottom:1px solid var(--border); }
+.measure-group:last-child { border-bottom:none; }
+.measure-group-label { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--tt); margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.measure-type-pill { font-size:10px; padding:2px 7px; border-radius:10px; border:1px solid; }
+.pill-obj { background:var(--blue-bg); color:var(--blue); border-color:var(--blue-b); }
+.pill-subj { background:var(--amber-bg); color:var(--amber); border-color:var(--amber-b); }
+.measure-item { margin-bottom:14px; }
+.measure-item:last-child { margin-bottom:0; }
+.measure-label { font-size:13px; color:var(--tp); margin-bottom:7px; }
+
+/* ---- Demographics screen ---- */
+#screen-demographics { background:var(--bg); }
+.demo-wrap { max-width:680px; margin:0 auto; padding:40px 24px; }
+.demo-header { margin-bottom:32px; }
+.demo-header h1 { font-size:22px; font-weight:500; margin-bottom:8px; }
+.demo-header p { font-size:13px; color:var(--ts); line-height:1.6; }
+.demo-section { background:var(--surf); border:1px solid var(--border); border-radius:var(--rl); padding:24px; margin-bottom:16px; }
+.demo-section-title { font-size:13px; font-weight:500; margin-bottom:18px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+.demo-field { margin-bottom:18px; }
+.demo-field:last-child { margin-bottom:0; }
+.demo-label { font-size:13px; font-weight:500; margin-bottom:8px; display:block; }
+.demo-sublabel { font-size:12px; color:var(--ts); margin-bottom:8px; display:block; }
+.radio-group { display:flex; flex-direction:column; gap:6px; }
+.radio-row { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ts); cursor:pointer; }
+.radio-row input[type=radio] { accent-color:var(--tp); width:15px; height:15px; cursor:pointer; }
+.radio-row:hover { color:var(--tp); }
+
+/* ---- Completion screen ---- */
+#screen-complete { background:var(--bg); }
+.complete-wrap { max-width:520px; margin:0 auto; padding:80px 24px; text-align:center; }
+.complete-icon { font-size:36px; margin-bottom:20px; }
+.complete-wrap h1 { font-size:24px; font-weight:500; margin-bottom:12px; }
+.complete-wrap p { font-size:14px; color:var(--ts); line-height:1.7; margin-bottom:8px; }
+.code-block { background:var(--surf2); border:1px solid var(--border); border-radius:var(--r); padding:12px; font-family:var(--fm); font-size:11px; color:var(--ts); white-space:pre-wrap; word-break:break-all; margin:16px 0; max-height:200px; overflow-y:auto; text-align:left; }
+
+/* ---- Researcher bar ---- */
+#researcher-bar { background:#fffbeb; border-bottom:1px solid #fde68a; padding:8px 20px; display:flex; align-items:center; gap:10px; font-size:11px; color:#78350f; flex-shrink:0; flex-wrap:wrap; }
+.cond-pill { font-size:11px; padding:2px 10px; border-radius:10px; font-weight:500; border:1px solid; }
+.cond-high  { background:var(--green-bg); color:var(--green); border-color:var(--green-b); }
+.cond-low   { background:var(--red-bg);   color:var(--red);   border-color:var(--red-b);   }
+.cond-ctrl  { background:var(--blue-bg);  color:var(--blue);  border-color:var(--blue-b);  }
+.hide { display:none !important; }
+
+/* ---- Loading ---- */
+#loading-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:12px; }
+#loading-screen .ll { font-size:18px; font-weight:500; }
+#loading-screen .ls { font-size:12px; color:var(--tt); font-family:var(--fm); }
+.divider { height:1px; background:var(--border); margin:14px 0; }
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="ll">Jarna Inc.</div>
+  <div class="ls">Loading...</div>
+</div>
+
+<!-- ===================== RESEARCHER BAR (hidden in production) ===================== -->
+<div id="researcher-bar" class="hide">
+  <strong>Researcher view:</strong>
+  <span>Condition: <span class="cond-pill" id="rbar-cond">—</span></span>
+  <span>Contexts shown: <span id="rbar-contexts">—</span></span>
+  <span>PID: <span id="rbar-pid">—</span></span>
+  <span style="margin-left:auto;color:#a16207">Set RESEARCHER_MODE:false before going live</span>
+</div>
+
+<!-- ===================== SCREEN 1: CONSENT ===================== -->
+<div class="screen" id="screen-consent">
+  <div class="centered-page">
+    <div class="form-card">
+      <div class="form-card-logo"></div>
+      <h1>Information Sheet</h1>
+      <p class="subtitle">Please read the following information carefully before deciding whether to participate.</p>
+
+      <div class="consent-body" id="consent-text">
+        <!-- ============================================================
+             RESEARCHER: Replace this entire block with your IRB-approved
+             consent text. Use <h3>, <p>, and <ul>/<li> tags for formatting.
+             ============================================================ -->
+	<h3>Study Title: Promotion Decisions in Management Departments</h3>
+	<h3>Protocol Number:AAAR2931(M00Y02)</h3>
+        <h3>Purpose of the study</h3>
+        <p>The purpose of this study is to have a better understanding of workplace decisions.</p>
+        <h3>What information is on this form?</h3>
+	<p>We are asking you to take part in a research study. This form explains why we are doing this study and generally what you will be asked to do if you choose to be in this study. This form will not cover all the details about the study prior to your participation, however, you will be debriefed with more information at the end of the study. It also describes the way we (Researchers) would like to use and share information about you. Please take the time to read this form. We will talk to you about taking part in this research study. You should ask us any questions you have about this form and about this research study. You do not have to participate if you don't want to. </p>
+	<h3>Why is this study being done? </h3>
+	<p>We are doing this research study to better understand how people think about certain workplace decisions and decision-making processes.</p>
+	<h3>What will I be asked to do if I choose to be in this study?</h3>
+	<p>We will ask you to complete a survey where you may read vignettes, recall personal experiences, or answer general questions related to certain workplace decisions, and you may be asked how you felt regarding the topics presented. At the end of the study, we will explain in greater detail what we hope to learn from this research. This study will last about 10 minutes.</p>
+	<h3>Use of Data:</h3>
+	<p>We would like to store the data that you agreed to provide as part of this study and possibly use them for future research. They will be stored in an encrypted file on the Investigator's computer. There will be no identifiable information attached to your data.</p>
+	<h3>Are there any risks?</h3>
+	<p>We do not think that there are any risks to taking part in this. Though we will try our best to ensure confidentiality there is a low risk that confidentiality will be compromised.</p>
+	<h3>Are there benefits to taking part in the study?</h3>
+	<p>You will not receive personal (direct) benefit from taking part in this research study. However, the information collected from this research may help others in the future.</p>
+	<h3>What about my privacy?</h3>
+	<p>Every effort will be made to keep your personal information confidential. However, we cannot guarantee total privacy. The data collected will be given a code number, and separated from your name or any other information that could identify you. The research file will be kept in a password protected database. Only the Principal Investigator and the study staff will be able to see this file. If information from this study is published or presented at scientific meetings, your name and other personal information about you will not be used.</p>
+	<h3>Will I get paid or be given anything to take part in this study?</h3>
+	<p>We will give you $2.00 to pay you for your time.</p>
+	<h3>Will I incur costs if I take part in this study?</h3>
+	<p>There will be no costs to you for being in this study</p>
+	<h3>Do I have to be in the study?</h3>
+	<p>Participation in this study is voluntary. Refusal to participate will involve no penalty or loss of benefits to which you are otherwise entitled. You may discontinue participation at any time without penalty or loss of benefits to which you are otherwise entitled.</p>
+	<h3>Who can I call if I have questions?</h3>
+	<p>You may email Isaac Raymundo at iraymundo26@gsb.columbia.edu if you have any questions or concerns about this research study. If you have any questions about your rights as a research participant, or if you have a concern about this study, you may contact the Institutional Review Board at askirb@columbia.edu.</p>
+	<h3>Statement of Consent:</h3>
+	<p>By selecting agree below I acknowledge that I have read this information sheet. The research study has been explained to me. I agree to be in the research study described above. Please take a picture of this page to retain a copy of the consent form.</p>
+        <!-- ============================================================ -->
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="consent-check">
+        <label for="consent-check">I have read and understood the information above. I am 18 years of age or older and I voluntarily agree to participate in this study.</label>
+      </div>
+
+      <button class="btn-primary btn-lg" onclick="submitConsent()">Continue to study</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCREEN 1.5: Welcome ===================== -->
+<div class="screen" id="screen-welcome">
+  <div class="centered-page">
+    <div class="form-card" style="max-width:480px">
+      <div class="form-card-logo">JARNA INC. — EMPLOYEE PORTAL</div>
+      <h1>Before you begin</h1>
+      <p class="subtitle">In this study you will take on the role of a <strong>Senior Strategy Associate</strong> at Jarna Inc., a management consulting and advisory firm.</p>
+      <p class="subtitle">You will be given access to Jarna Inc.'s employee portal, where you will find information about the organization, your role, and a set of tasks to complete.</p>
+      <p class="subtitle">Please read all materials carefully and complete every task before submitting. The study should take approximately 8–10 minutes.</p>
+      <p class="subtitle" style="margin-bottom:28px">When you are ready, click below to proceed to sign in.</p>
+      <button class="btn-primary btn-lg" onclick="submitWelcome()">Next page</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCREEN 2: LOGIN ===================== -->
+<div class="screen" id="screen-login">
+  <div class="centered-page">
+    <div class="form-card" style="max-width:480px">
+      <div class="form-card-logo">Jarna Inc. — EMPLOYEE PORTAL</div>
+      <h1>Sign in</h1>
+      <p class="subtitle">Your employee ID is the same are your CloudResearchID. Your ID has been filled in automatically. If it looks incorrect, you can edit it below.</p>
+
+      <div class="field-group">
+        <label class="field-label" for="pid-input">Employee ID</label>
+        <input class="field-input" type="text" id="pid-input" placeholder="e.g. CR_abc123" autocomplete="off" spellcheck="false">
+        <div class="field-hint" id="pid-hint">Detected from your study link. Edit if needed.</div>
+        <div class="field-error" id="pid-error">Please enter your participant ID before continuing.</div>
+      </div>
+
+      <button class="btn-primary btn-lg" onclick="submitLogin()" style="margin-top:8px">Enter portal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCREEN 3: PORTAL ===================== -->
+<div class="screen" id="screen-portal">
+  <div id="sidebar">
+    <div class="sidebar-logo">
+      <div class="org-name">Jarna Inc.</div>
+      <div class="org-sub">Employee Portal</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Main</div>
+      <div class="nav-item active" data-tab="home">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6.5L8 2l6 4.5V14H10v-3H6v3H2V6.5z"/></svg>Home
+      </div>
+      <div class="nav-item" data-tab="tasks">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 8l2 2 4-4M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z"/></svg>My Tasks
+      </div>
+      <div class="nav-item" data-tab="messages">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H4l-2 2V4z"/></svg>Messages
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Organization</div>
+      <div class="nav-item" data-tab="about">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5v.5"/></svg>About Org
+      </div>
+      <div class="nav-item" data-tab="role">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>My Role
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-name" id="sidebar-name">—</div>
+      <div class="user-role">Senior Strategy Associate</div>
+    </div>
+  </div>
+
+  <div id="portal-main">
+    <div id="topbar">
+      <div class="topbar-title" id="topbar-greeting">Welcome back</div>
+      <div class="topbar-right">
+        <div class="date-label" id="today-date"></div>
+        <div class="org-pill">Jarna Inc.</div>
+      </div>
+    </div>
+
+    <div id="portal-content">
+
+      <!-- HOME -->
+      <div class="tab-pane active" id="tab-home">
+        <div class="card">
+          <div class="card-title" id="home-greeting">Good day</div>
+          <div class="card-body">Welcome back to your employee portal. You have <strong>3 tasks</strong> pending today. Head to My Tasks to get started.</div>
+        </div>
+        <div class="section-label">Quick stats</div>
+        <div class="info-grid">
+          <div class="info-cell"><div class="info-cell-label">Department</div><div class="info-cell-val">Marketing</div></div>
+          <div class="info-cell"><div class="info-cell-label">Start date</div><div class="info-cell-val">March 3, 2024</div></div>
+          <div class="info-cell"><div class="info-cell-label">Employees</div><div class="info-cell-val">4,200</div></div>
+          <div class="info-cell"><div class="info-cell-label">Tasks due today</div><div class="info-cell-val">3</div></div>
+        </div>
+        <div class="section-label">Announcements</div>
+        <div class="msg-row">
+          <div class="msg-header"><span class="msg-from">People &amp; Culture Team</span><span class="msg-time">Today</span></div>
+          <div class="msg-body">Your daily tasks are now active. Please work through them in the My Tasks section at your own pace.</div>
+        </div>
+      </div>
+
+      <!-- TASKS -->
+      <div class="tab-pane" id="tab-tasks">
+        <div class="section-label">Your tasks</div>
+        <div class="task-row" id="task1-row">
+          <div class="check-circle" id="check1"></div>
+          <div class="task-info">
+            <div class="task-title-text">Review welcome presentation — recruiter event</div>
+            <div class="task-desc-text">View the slide deck and complete a short follow-up check</div>
+          </div>
+          <span class="badge badge-pending" id="badge1">Pending</span>
+        </div>
+        <div class="task-row locked" id="task2-row">
+          <div class="check-circle" id="check2"></div>
+          <div class="task-info">
+            <div class="task-title-text">Organizational decision criteria review</div>
+            <div class="task-desc-text">Rate the importance of different measurement approaches across decision scenarios</div>
+          </div>
+          <span class="badge badge-locked" id="badge2">Locked</span>
+        </div>
+        <div class="task-row locked" id="task3-row">
+          <div class="check-circle" id="check3"></div>
+          <div class="task-info">
+            <div class="task-title-text">Organizational practices survey</div>
+            <div class="task-desc-text">Answer questions about your perceptions of this organization</div>
+          </div>
+          <span class="badge badge-locked" id="badge3">Locked</span>
+        </div>
+        <div style="font-size:12px;color:var(--tt);margin-top:10px">Complete tasks in order — each task unlocks after the previous is finished.</div>
+      </div>
+
+      <!-- MESSAGES — identical across conditions -->
+      <div class="tab-pane" id="tab-messages">
+        <div class="section-label">Inbox</div>
+        <div class="msg-row"><div class="msg-header"><span class="msg-from">Sarah Chen, Senior Director</span><span class="msg-time">Yesterday</span></div><div class="msg-body">Hi, our recruiter event is coming up. This gives us a good chance to get familiar with how we present ourselves externally. Let me know if you have questions.</div></div>
+        <div class="msg-row"><div class="msg-header"><span class="msg-from">HR </span><span class="msg-time">2 days ago</span></div><div class="msg-body"> Please complete the organizational decision criteria review when you get the chance.</div></div>
+        <div class="msg-row"><div class="msg-header"><span class="msg-from">Marcus Lee</span><span class="msg-time">3 days ago</span></div><div class="msg-body">Let's grab coffee sometime and catch up — let me know when you're free.</div></div>
+      </div>
+
+      <!-- ABOUT — identical across conditions -->
+      <div class="tab-pane" id="tab-about">
+        <div class="section-label">Organization overview</div>
+        <div class="card">
+          <div class="card-title">Jarna Inc.</div>
+          <div class="card-body">Founded in 2001 and headquartered in Chicago, Jarna Inc. is a management consulting and advisory firm serving mid-market and enterprise clients across North America.</div>
+        </div>
+        <div class="info-grid">
+          <div class="info-cell"><div class="info-cell-label">Employees</div><div class="info-cell-val">4,200</div></div>
+          <div class="info-cell"><div class="info-cell-label">Founded</div><div class="info-cell-val">2001</div></div>
+          <div class="info-cell"><div class="info-cell-label">Headquarters</div><div class="info-cell-val">Chicago, IL</div></div>
+          <div class="info-cell"><div class="info-cell-label">Annual revenue</div><div class="info-cell-val">$620M</div></div>
+        </div>
+      </div>
+
+      <!-- ROLE — identical across conditions -->
+      <div class="tab-pane" id="tab-role">
+        <div class="section-label">Your position</div>
+        <div class="card">
+          <div class="card-title">Senior Strategy Associate</div>
+          <div style="font-size:12px;color:var(--tt);margin:2px 0 10px">Marketing &amp; Brand — Chicago, IL</div>
+        </div>
+        <div class="section-label">Responsibilities</div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Support campaign planning and execution</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Coordinate with external vendors and agencies</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Contribute to organizational strategies and positioning</div></div></div>
+        <div class="task-row" style="cursor:default;pointer-events:none"><div class="task-info"><div class="task-title-text">Prepare materials for client-facing events</div></div></div>
+      </div>
+
+    </div><!-- /portal-content -->
+  </div><!-- /portal-main -->
+</div><!-- /screen-portal -->
+
+<!-- ===================== SCREEN 4: COMPLETE ===================== -->
+<div class="screen" id="screen-complete">
+  <div class="centered-page">
+    <div class="complete-wrap">
+      <div class="complete-icon">✓</div>
+      <h1>All tasks complete</h1>
+      <p>Thank you for participating. You will be redirected shortly.</p>
+      <p style="font-size:12px;color:var(--tt);margin-top:16px">Please do not close this tab.</p>
+      <div class="code-block" id="data-preview" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL (shared) ===================== -->
+<div id="overlay">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<!-- ===================== JAVASCRIPT ===================== -->
+<script>
+/* =================================================================
+   STUDY_CONFIG — edit all study content here.
+   Logic code starts after this block.
+   ================================================================= */
+var STUDY_CONFIG = {
+
+  /* ---- Backend (same as before — set one before deploying) ---- */
+  RESEARCHER_MODE:    false,   // false in production
+  QUALTRICS_URL:      'https://columbia.qualtrics.com/jfe/form/SV_3KqPRAqyLbFzNwW',     // e.g. 'https://yoursurvey.qualtrics.com/jfe/form/SV_xxx'
+  GOOGLE_SHEETS_URL:  '',     // Apps Script web app URL
+  FORMSPREE_URL:      '',     // e.g. 'https://formspree.io/f/xxxxxxxx'
+  AIRTABLE_TOKEN:     '',
+  AIRTABLE_BASE:      '',
+  AIRTABLE_TABLE:     '',
+  PID_PARAM:          'participantId', // CloudResearch param name
+  PID_FALLBACKS:      ['PROLIFIC_PID','workerId','pid','participantId'],
+  COMPLETION_CODE:    'MGXX-COMPLETE', // shown on final screen; leave '' to hide
+
+  /* ---- Status manipulation slides ---- */
+  /* Only the slides differ across conditions. Everything else is identical. */
+  SLIDES: {
+    high: [
+  { heading: 'Welcome to Jarna Inc.',
+    body: 'This presentation provides background information on our organization.',
+    badge: null },
+  { heading: 'Our organization',
+    body: 'Jarna Inc. is a management consulting and advisory firm. We serve clients across North America and have been in operation since 2001, spanning strategy, operations, and organizational advisory services. Our annual revenue is $620M.',
+    badge: null },
+  { heading: 'Our people and culture',
+    body: 'We employ approximately 4,200 people across our offices. Our teams work on client projects spanning multiple industries and value clear communication, professional development, and collaborative problem-solving.',
+    badge: null },
+  { heading: 'Our standing in the industry',
+    body: 'Jarna Inc. is widely recognized and consistently held in high esteem by clients, peers, and competitors. Independent surveys rank us among the most admired consulting firms in North America.',
+    badge: { text: '#2 Most Admired Consulting Firm — Industry Analyst Report 2024', color:'#1e40af', bg:'#dbeafe', border:'#93c5fd' } },
+  { heading: 'Recognition and reputation',
+    body: 'Jarna has received numerous external awards to date. As an organization widely cited among top firms in the field, we are focused on maintaining our status.',
+    badge: { text: 'Named "Most Respected Employer" — Consulting Weekly, 3 consecutive years', color:'#166534', bg:'#dcfce7', border:'#86efac' } },
+  { heading: 'Thank you!',
+    body: 'Thank you for supporting our recruiter event. We look forward to connecting with great candidates.',
+    badge: null }
+],
+    low: [
+  { heading: 'Welcome to Jarna Inc.',
+    body: 'This presentation provides background on our organization.',
+    badge: null },
+  { heading: 'Our organization',
+    body: 'Jarna Inc. is a management consulting and advisory firm. We serve clients across North America and have been in operation since 2001, spanning strategy, operations, and organizational advisory services. Our annual revenue is $620M.',
+    badge: null },
+  { heading: 'Our people and culture',
+    body: 'We employ approximately 4,200 people across our offices. Our teams work on client projects spanning multiple industries and value clear communication, professional development, and collaborative problem-solving.',
+    badge: null },
+  { heading: 'Our standing in the industry',
+    body: 'Jarna Inc. is not yet widely recognized and still earning the respect of clients, peers, and competitors. We are working to build meaningful recognition among consulting firms in North America.',
+    badge: { text: 'Not yet ranked among recognized firms — Industry Analyst Report 2024', color:'#1e40af', bg:'#dbeafe', border:'#93c5fd' } },
+  { heading: 'Recognition and reputation',
+    body: 'Jarna has received limited external recognition to date. Though we are not widely cited among top firms in the field, we are focused on improving our status.',
+    badge: { text: 'No major industry awards or accolades received to date', color:'#166534', bg:'#dcfce7', border:'#86efac' } },
+  { heading: 'Thank you!',
+    body: 'Thank you for supporting our recruiter event. We look forward to connecting with great candidates.',
+    badge: null }
+],
+    control: [
+  { heading: 'Welcome to Jarna Inc.',
+    body: 'Thank you for being here. This presentation provides background on our organization to help you speak with candidates effectively.',
+    badge: null },
+  { heading: 'Our organization',
+    body: 'Jarna Inc. is a management consulting and advisory firm. We serve clients across North America and have been in operation since 2001, spanning strategy, operations, and organizational advisory services. Our annual revenue is $620M.',
+    badge: null },
+  { heading: 'Our people and culture',
+    body: 'We employ approximately 4,200 people across our offices. Our teams work on client projects spanning multiple industries and value clear communication, professional development, and collaborative problem-solving.',
+    badge: null },
+  { heading: 'Our standing in the industry',
+    body: 'Jarna Inc. is one of many consulting firms operating across North America. We work alongside a range of competitors and serve a broad mix of clients across industries.',
+    badge: null },
+  { heading: 'Recognition and reputation',
+    body: 'Jarna maintains a professional reputation within the consulting industry. We focus on delivering consistent service to our clients and building relationships over time.',
+    badge: null },
+  { heading: 'Thank you!',
+    body: 'Thank you for supporting our recruiter event. We look forward to connecting with great candidates.',
+    badge: null }
+]
+  },
+
+  /* ---- Task 1: Manipulation check survey ---- */
+  MANIP_CHECK: {
+    title:   'Task 1 — check-in',
+    intro:   'Based on the presentation you just reviewed, please rate your agreement with each statement (1 = Strongly disagree, 7 = Strongly agree).',
+    items: [
+      { key: 'well_respected',  text: 'This organization is well-respected in its industry.' },
+      { key: 'ranks_highly',     text: 'This organization ranks highly compared with most others.' },
+      { key: 'prestigious',     text: 'This organization is very prestigious.' },
+      { key: 'high_status',     text: 'This organization has high status relative to similar organizations.' }
+    ]
+  },
+
+  /* ---- Task 2: Decision contexts ---- */
+  /*
+    Structure:
+      id:          short slug used in column names (no spaces)
+      title:       shown as context heading
+      description: shown to participant as scenario framing
+      criteria:    array of exactly 3 criteria objects
+        Each criterion:
+          key:        short slug for column names
+          name:       displayed name
+          definition: displayed definition
+          objective:  array of exactly 3 objective measure strings
+          subjective: array of exactly 3 subjective measure strings
+
+    Latin square rotation ensures each of the 6 contexts appears
+    equally often and order is counterbalanced across participants.
+
+    REPLACE THE PLACEHOLDER CONTENT BELOW WITH YOUR ACTUAL CONTENT.
+  */
+  CONTEXTS: [
+    {
+      id: 'promotion',
+      title: 'Promotion decision',
+      description: 'The Leadership and HR team at Jarna Inc. is reviewing and updating the criteria used to make promotion decisions. As a Senior Strategy Associate, you have been asked to weigh in on the measurement approaches that should inform these decisions going forward. For each measurement approach listed below, rate how important it should be when evaluating employees for promotion to a senior-level role.',
+      criteria: [
+        {
+  key: 'leadership',
+  name: 'Leadership potential',
+  definition: 'The capacity to guide, motivate, and influence others toward organizational goals.',
+  objective: [
+    'Number of direct reports currently managed',
+    'Number of completed leadership development courses or certifications on record',
+    'Whether this person has led at least one cross-functional project in the past two years'
+  ],
+  subjective: [
+    'Manager\'s assessment on a 1 to 10 scale of how effectively this person motivates others',
+    'Manager\'s impression of this person\'s long-term leadership potential',
+    'Manager\'s judgment of how well this person would handle increased responsibility'
+  ]
+},
+{
+  key: 'performance',
+  name: 'Past performance',
+  definition: 'Track record of achieving or exceeding job responsibilities and goals.',
+  objective: [
+    'Percentage of formally set quarterly targets met over the past two years',
+    'Revenue generated in the current role',
+    'Number of formal performance awards received'
+  ],
+  subjective: [
+    'Manager\'s rating on a 1 to 10 scale of how strong this person\'s performance has been',
+    'Manager\'s assessment of how much this person has grown in their role',
+    'Manager\'s judgment of how this person\'s performance compares to peers at their level'
+  ]
+},
+{
+  key: 'culture_fit',
+  name: 'Cultural contribution',
+  definition: 'The extent to which the employee reinforces and adds to the organization\'s values and culture.',
+  objective: [
+    'Number of internal mentorship or peer coaching sessions completed on record',
+    'Attendance rate at company-wide events and team meetings over the past year',
+    'Number of formal recognition instances received from colleagues via the employee portal'
+  ],
+  subjective: [
+    'Manager\'s rating on a 1 to 10 scale of how positively this person affects team morale',
+    'Manager\'s sense of how well this person embodies the organization\'s values',
+    'Manager\'s judgment of how well this person would represent the organization externally'
+  ]
+}
+      ]
+    }
+  ], /* end CONTEXTS */
+
+  /* ---- Task 3: Mediator items ---- */
+  /*
+    Add as many sections as you need. Each section has a title and items.
+    Each item: { key, text } — key becomes the column name (med_[key]).
+    Scale is always 1–7 with anchors you define per section.
+    REPLACE PLACEHOLDERS WITH YOUR ACTUAL CONSTRUCTS AND ITEMS.
+  */
+  MEDIATORS: [
+    {
+      sectionTitle: '',
+      intro: 'Please rate your agreement with each of the following statements about this organization (1 = Strongly disagree, 7 = Strongly agree).',
+      anchorLow:  'Strongly disagree',
+      anchorHigh: 'Strongly agree',
+      items: [
+        { key: 'legitimacy_1', text: 'This organization would have a hard time justifying decisions.' },
+        { key: 'legitimacy_2', text: 'This organization is able to defend how decisions are made.' },
+        { key: 'competence',     text: 'Employees at this organization are capable of making well-informed decisions.' }
+      ]
+    },
+    {
+      sectionTitle: '',
+      intro: 'Please rate how much you agree with the following statements (1 = Strongly disagree, 7 = Strongly agree).',
+      anchorLow:  'Strongly disagree',
+      anchorHigh: 'Strongly agree',
+      items: [
+      { key: 'oid_1',     text: 'I feel strong ties with this organization.' },
+      { key: 'oid_2',     text: 'I feel proud to work for this organization.' },
+      { key: 'oid_3',     text: 'I am glad to be a member of this organization.' }
+      ]
+    }
+    /* Add more sections as needed — copy the object above and edit it */
+  ]
+
+}; /* end STUDY_CONFIG */
+
+
+/* =================================================================
+   ENGINE — no need to edit below this line
+   ================================================================= */
+
+/* ---- State ---- */
+var S = {
+  pid:            null,
+  condition:      null,   // 'high' | 'low' | 'control'
+  contextOrder:   [],     // array of 3 context indices assigned to this participant
+  currentCtxIdx:  0,      // which of the 3 assigned contexts we're on (0,1,2)
+  currentCritIdx: 0,
+  currentSlide:   0,
+  task1Done:      false,
+  task2Done:      false,
+  task3Done:      false,
+  consentTime:    null,
+  startTime:      null,
+  task1Start:     null, task1End: null,
+  task2Start:     null, task2End: null,
+  task3Start:     null, task3End: null,
+  tabsVisited:    ['home'],
+  mediatorOrder:      null,   // ← add this
+  mediatorItemOrders: null, 
+  data:           {}      // accumulated response data
+};
+
+/* ---- Latin square for 1 contexts, show 1 ---- */
+/* Each row is one possible ordered triple of context indices (0–5).
+   Rows are evenly distributed so all 6 contexts appear equally. */
+var LATIN_SQUARE = [[0]];
+
+/* ---- Init ---- */
+window.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  S.pid = getPid();
+
+  // Restore from session if page was refreshed
+  try {
+    var stored = JSON.parse(sessionStorage.getItem('mg_state') || 'null');
+    if (stored && stored.pid === S.pid) {
+      S.condition    = stored.condition;
+      S.contextOrder = stored.contextOrder;
+    }
+  } catch(e){}
+
+  if (!S.condition) {
+    var r = Math.random();
+    S.condition = r < 0.333 ? 'high' : r < 0.667 ? 'low' : 'control';
+  }
+  if (!S.contextOrder.length) {
+    // Pick a row from the Latin square based on PID hash
+    var hash = pidHash(S.pid);
+    S.contextOrder = LATIN_SQUARE[hash % LATIN_SQUARE.length].slice();
+  }
+
+  try { sessionStorage.setItem('mg_state', JSON.stringify({pid:S.pid,condition:S.condition,contextOrder:S.contextOrder})); } catch(e){}
+
+  // Write context assignment into S.data immediately — captured even on dropout
+  S.data['context_order'] = S.contextOrder.map(function(i){ return STUDY_CONFIG.CONTEXTS[i].id; }).join(',');
+  S.contextOrder.forEach(function(ctxIndex, pos) {
+    S.data['ctx'+(pos+1)+'_context_id']    = STUDY_CONFIG.CONTEXTS[ctxIndex].id;
+    S.data['ctx'+(pos+1)+'_context_title'] = STUDY_CONFIG.CONTEXTS[ctxIndex].title;
+    S.data['ctx'+(pos+1)+'_context_pos']   = String(pos+1);
+  });
+
+  // Prefill login
+  document.getElementById('pid-input').value = S.pid || '';
+  if (S.pid && S.pid.indexOf('LOCAL_') === -1) {
+    document.getElementById('pid-hint').textContent = 'Auto-detected from your study link. Edit if incorrect.';
+  } else {
+    document.getElementById('pid-hint').textContent = 'No ID detected in URL — please enter it manually.';
+  }
+
+  // Researcher bar
+  if (STUDY_CONFIG.RESEARCHER_MODE) {
+    var bar = document.getElementById('researcher-bar');
+    bar.classList.remove('hide');
+    document.getElementById('rbar-pid').textContent = S.pid;
+    var cp = document.getElementById('rbar-cond');
+    cp.textContent = S.condition;
+    cp.className = 'cond-pill cond-' + (S.condition === 'control' ? 'ctrl' : S.condition);
+    document.getElementById('rbar-contexts').textContent =
+      S.contextOrder.map(function(i){ return STUDY_CONFIG.CONTEXTS[i].id; }).join(' → ');
+  }
+
+  // Nav
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.addEventListener('click', function(){ showTab(el.dataset.tab); });
+  });
+  document.getElementById('task1-row').addEventListener('click', startTask1);
+  document.getElementById('task2-row').addEventListener('click', startTask2);
+  document.getElementById('task3-row').addEventListener('click', startTask3);
+
+
+  showScreen('consent');
+  setTimeout(function(){ document.getElementById('loading-screen').style.display='none'; }, 500);
+});
+
+/* ---- Screen management ---- */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById('screen-'+id).classList.add('active');
+}
+
+/* ---- Consent ---- */
+function submitConsent() {
+  if (!document.getElementById('consent-check').checked) {
+    alert('Please check the box to confirm your consent before continuing.');
+    return;
+  }
+  S.consentTime = Date.now();
+  showScreen('welcome');
+}
+
+/* ---- Welcome ---- */
+function submitWelcome() {
+  S.WelcomeTime = Date.now();
+  showScreen('login');
+}
+
+/* ---- Login ---- */
+function submitLogin() {
+  var pidVal = document.getElementById('pid-input').value.trim();
+  var ok = true;
+  document.getElementById('pid-error').style.display = 'none';
+  if (!pidVal) { document.getElementById('pid-error').style.display = 'block'; ok = false; }
+  if (!ok) return;
+  S.pid = pidVal;
+  S.startTime = Date.now();
+  showScreen('portal');
+}
+
+/* ---- Portal nav ---- */
+function showTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  document.getElementById('tab-'+id).classList.add('active');
+  document.querySelector('[data-tab="'+id+'"]').classList.add('active');
+  if (S.tabsVisited[S.tabsVisited.length-1] !== id) S.tabsVisited.push(id);
+}
+
+/* ---- Task 1: slides ---- */
+function startTask1() {
+  if (S.task1Done) return;
+  if (!S.task1Start) S.task1Start = Date.now();
+  S.currentSlide = 0;
+  renderSlide();
+}
+function renderSlide() {
+  var slides = STUDY_CONFIG.SLIDES[S.condition];
+  var slide  = slides[S.currentSlide];
+  var total  = slides.length;
+  var isLast = S.currentSlide === total - 1;
+  var dots   = slides.map(function(_,i){ return '<div class="dot'+(i===S.currentSlide?' active':'')+'"></div>'; }).join('');
+  var badge  = slide.badge
+    ? '<div class="slide-badge" style="background:'+slide.badge.bg+';color:'+slide.badge.color+';border-color:'+slide.badge.border+'">'+slide.badge.text+'</div>'
+    : '';
+  var prevBtn = S.currentSlide > 0
+    ? '<button onclick="changeSlide(-1)" style="font-size:12px;padding:6px 14px">← Prev</button>'
+    : '<span style="width:80px;display:inline-block"></span>';
+  var nextBtn = !isLast
+    ? '<button onclick="changeSlide(1)" style="font-size:12px;padding:6px 14px">Next →</button>'
+    : '<button class="btn-primary" onclick="openManipCheck()" style="font-size:12px;padding:6px 14px">Done — complete check-in</button>';
+  setModal('Task 1: Recruiter event presentation',
+    'Review all slides, then complete a short check-in when you reach the end.',
+    '<div class="slide-frame">'+
+      '<div class="slide-eyebrow">Slide '+(S.currentSlide+1)+' of '+total+' — Jarna Inc. Recruiter Event</div>'+
+      '<div class="slide-heading">'+slide.heading+'</div>'+
+      '<div class="slide-body">'+slide.body+'</div>'+badge+
+    '</div>'+
+    '<div class="slide-nav-row">'+prevBtn+'<div class="slide-dots">'+dots+'</div>'+nextBtn+'</div>');
+}
+function changeSlide(d){ S.currentSlide+=d; renderSlide(); }
+
+/* ---- Task 1: manipulation check ---- */
+function openManipCheck() {
+  var mc = STUDY_CONFIG.MANIP_CHECK;
+  openSurvey(mc.title, mc.intro, mc.items, 'manip_check', function(responses){
+    S.task1End = Date.now();
+    Object.keys(responses).forEach(function(k){ S.data['t1mc_'+k] = responses[k]; });
+    S.task1Done = true;
+    markTask(1, true);
+    unlockTask(2);
+    closeModal();
+  });
+}
+
+/* ---- Task 2: decision contexts ---- */
+function startTask2() {
+  if (!S.task1Done) { alert('Please complete Task 1 first.'); return; }
+  if (S.task2Done) return;
+  if (!S.task2Start) S.task2Start = Date.now();
+  S.criteriaOrder  = null;
+  S.measureOrders  = null;
+  S.currentCritIdx = 0;
+  renderContext();
+}
+
+function renderContext() {
+  var ctxIndex = S.contextOrder[S.currentCtxIdx];
+  var ctx      = STUDY_CONFIG.CONTEXTS[ctxIndex];
+  var ctxNum   = S.currentCtxIdx + 1;
+
+  // Shuffle criteria order once — stable on re-render
+  if (!S.criteriaOrder) {
+    S.criteriaOrder = shuffle(ctx.criteria.map(function(_,i){ return i; }));
+  }
+
+  // Initialize measure orders
+  if (!S.measureOrders) {
+    S.measureOrders = {};
+  }
+
+  // Record criteria display order
+  S.data['criteria_order_ctx'+ctxNum] = S.criteriaOrder.map(function(ci){
+    return ctx.criteria[ci].key;
+  }).join(',');
+
+  // Get the current criterion to show
+  var ci   = S.criteriaOrder[S.currentCritIdx];
+  var crit = ctx.criteria[ci];
+
+  var totalCrit  = ctx.criteria.length;
+  var isLastCrit = S.currentCritIdx === totalCrit - 1;
+
+  // Build combined measure pool for this criterion
+  var allMeasures = [];
+  crit.objective.forEach(function(text, mi) {
+    allMeasures.push({ type: 'obj', idx: mi, text: text });
+  });
+  crit.subjective.forEach(function(text, mi) {
+    allMeasures.push({ type: 'subj', idx: mi, text: text });
+  });
+
+  // Shuffle combined pool once — stable on re-render
+  if (!S.measureOrders['combined_'+ci]) {
+    S.measureOrders['combined_'+ci] = shuffle(allMeasures.map(function(_,i){ return i; }));
+  }
+
+  // Record measure display order
+  var fullOrder = S.measureOrders['combined_'+ci].map(function(poolIdx){
+    var m = allMeasures[poolIdx];
+    return m.type+(m.idx+1);
+  });
+  S.data['measure_order_ctx'+ctxNum+'_crit'+(ci+1)] = fullOrder.join(',');
+
+  var measureItems = S.measureOrders['combined_'+ci].map(function(poolIdx) {
+    var m   = allMeasures[poolIdx];
+    var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_'+m.type+(m.idx+1);
+    return renderMeasureItem(key, m.text, null);
+  }).join('');
+
+  // Progress dots across all criteria
+  var dots = ctx.criteria.map(function(_,i){
+    return '<div class="dot'+(i === S.currentCritIdx ? ' active' : '')+'"></div>';
+  }).join('');
+
+  var prevBtn = S.currentCritIdx > 0
+    ? '<button onclick="critBack()" style="font-size:12px;padding:6px 14px">← Back</button>'
+    : '<span style="width:80px;display:inline-block"></span>';
+
+  var nextBtn = isLastCrit
+    ? '<button class="btn-primary" onclick="submitContext()" style="font-size:12px;padding:6px 14px">Submit decisions</button>'
+    : '<button class="btn-primary" onclick="critNext()" style="font-size:12px;padding:6px 14px">Next →</button>';
+
+  setModal(
+    'Task 2: Decision criteria review',
+    'The measurement approaches listed below are methods that could be used to evaluate <strong>' + crit.name.toLowerCase() + '</strong> specifically. Rate how important each approach should be when assessing this criterion for a promotion decision (1 = Not at all important, 7 = Extremely important).',
+    '<div class="ctx-header">'+
+      '<div class="ctx-label">'+ctx.title+' — criterion '+(S.currentCritIdx+1)+' of '+totalCrit+'</div>'+
+      '<div class="ctx-title">'+crit.name+'</div>'+
+      '<div class="ctx-desc">'+crit.definition+'</div>'+
+    '</div>'+
+    '<div class="criteria-block">'+
+      '<div class="measure-group">'+
+        '<div class="measure-group-label">Measurement approaches for ' + crit.name.toLowerCase() + '</div>'+
+        measureItems+
+      '</div>'+
+    '</div>'+
+    '<div class="divider"></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between">'+
+      prevBtn+
+      '<div class="slide-dots">'+dots+'</div>'+
+      nextBtn+
+    '</div>'
+  );
+  restoreContextValues(ctxNum, ctx);
+}
+
+function renderMeasureItem(key, label, type) {
+  var typeTag = type
+    ? '<span class="measure-type-pill '+(type==='obj' ? 'pill-obj' : 'pill-subj')+'" style="font-size:10px;margin-left:8px">'+(type==='obj' ? 'Objective' : 'Subjective')+'</span>'
+    : '';
+  var opts = '';
+  for (var i = 1; i <= 7; i++) {
+    opts += '<div class="scale-opt" data-key="'+key+'" data-val="'+i+'" onclick="selectMeasure(\''+key+'\','+i+',this)">'+i+'</div>';
+  }
+  return '<div class="measure-item">'+
+    '<div class="measure-label">'+label+typeTag+'</div>'+
+    '<div class="scale-row" id="row-'+key+'">'+opts+'</div>'+
+    '<div class="scale-anchors"><span>Not at all important</span><span>Extremely important</span></div>'+
+  '</div>';
+}
+
+function selectMeasure(key, val, el) {
+  document.querySelectorAll('#row-'+key+' .scale-opt').forEach(function(b){ b.classList.remove('selected'); });
+  el.classList.add('selected');
+  S.data[key] = String(val);
+}
+
+function restoreContextValues(ctxNum, ctx) {
+  ctx.criteria.forEach(function(crit, ci) {
+    crit.objective.forEach(function(_, mi) {
+      var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_obj'+(mi+1);
+      if (S.data[key]) highlightSelected(key, S.data[key]);
+    });
+    crit.subjective.forEach(function(_, mi) {
+      var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_subj'+(mi+1);
+      if (S.data[key]) highlightSelected(key, S.data[key]);
+    });
+  });
+}
+
+function highlightSelected(key, val) {
+  var row = document.getElementById('row-'+key);
+  if (!row) return;
+  row.querySelectorAll('.scale-opt').forEach(function(b){
+    if (b.dataset.val === String(val)) b.classList.add('selected');
+  });
+}
+
+function critNext() {
+  var ctxIndex = S.contextOrder[S.currentCtxIdx];
+  var ctx      = STUDY_CONFIG.CONTEXTS[ctxIndex];
+  var ctxNum   = S.currentCtxIdx + 1;
+  var ci       = S.criteriaOrder[S.currentCritIdx];
+  var crit     = ctx.criteria[ci];
+
+  // Validate all measures on this criterion answered
+  var missing = [];
+  crit.objective.forEach(function(_, mi) {
+    var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_obj'+(mi+1);
+    if (!S.data[key]) missing.push(key);
+  });
+  crit.subjective.forEach(function(_, mi) {
+    var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_subj'+(mi+1);
+    if (!S.data[key]) missing.push(key);
+  });
+
+  if (missing.length > 0) {
+    alert('Please rate all items before continuing ('+missing.length+' remaining).');
+    return;
+  }
+
+  S.currentCritIdx++;
+  document.getElementById('modal-body').scrollTop = 0;
+  renderContext();
+}
+
+function critBack() {
+  S.currentCritIdx--;
+  document.getElementById('modal-body').scrollTop = 0;
+  renderContext();
+}
+
+function submitContext() {
+  var ctxIndex = S.contextOrder[S.currentCtxIdx];
+  var ctx      = STUDY_CONFIG.CONTEXTS[ctxIndex];
+  var ctxNum   = S.currentCtxIdx + 1;
+  var ci       = S.criteriaOrder[S.currentCritIdx];
+  var crit     = ctx.criteria[ci];
+
+  // Validate last criterion
+  var missing = [];
+  crit.objective.forEach(function(_, mi) {
+    var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_obj'+(mi+1);
+    if (!S.data[key]) missing.push(key);
+  });
+  crit.subjective.forEach(function(_, mi) {
+    var key = 'ctx'+ctxNum+'_'+ctx.id+'_crit'+(ci+1)+'_'+crit.key+'_subj'+(mi+1);
+    if (!S.data[key]) missing.push(key);
+  });
+
+  if (missing.length > 0) {
+    alert('Please rate all items before continuing ('+missing.length+' remaining).');
+    return;
+  }
+
+  // Reset criterion index for next context
+  S.currentCritIdx = 0;
+
+  if (S.currentCtxIdx < S.contextOrder.length - 1) {
+    S.currentCtxIdx++;
+    renderContext();
+  } else {
+    S.task2End = Date.now();
+    S.task2Done = true;
+    markTask(2, true);
+    unlockTask(3);
+    closeModal();
+  }
+}
+
+/* ---- Task 3: mediators ---- */
+function startTask3() {
+  if (!S.task2Done) { alert('Please complete Task 2 first.'); return; }
+  if (S.task3Done) return;
+  if (!S.task3Start) S.task3Start = Date.now();
+
+  // Shuffle section order once — stable on re-render
+  if (!S.mediatorOrder) {
+    var sectionIndices = shuffle(STUDY_CONFIG.MEDIATORS.map(function(_,i){ return i; }));
+    S.mediatorOrder = sectionIndices;
+
+    // Shuffle items within each section once
+    S.mediatorItemOrders = {};
+    STUDY_CONFIG.MEDIATORS.forEach(function(sec, si) {
+      S.mediatorItemOrders[si] = shuffle(sec.items.map(function(_,i){ return i; }));
+    });
+
+    // Record section and item orders into data
+    S.data['mediator_section_order'] = sectionIndices.map(function(i){
+      return 'section_' + i;
+    }).join(',');
+    STUDY_CONFIG.MEDIATORS.forEach(function(sec, si) {
+      S.data['mediator_item_order_section'+si] = S.mediatorItemOrders[si].map(function(i){
+        return sec.items[i].key;
+      }).join(',');
+    });
+  }
+
+  renderMediators(0);
+}
+
+function renderMediators(displayIdx) {
+  var sections    = STUDY_CONFIG.MEDIATORS;
+  var sectionIdx  = S.mediatorOrder[displayIdx];
+  var sec         = sections[sectionIdx];
+  var isLast      = displayIdx === S.mediatorOrder.length - 1;
+  var shuffledItems = S.mediatorItemOrders[sectionIdx].map(function(i){ return sec.items[i]; });
+
+  var items = shuffledItems.map(function(item, qi) {
+    return renderSurveyItem(qi, item.text, item.key, sec.anchorLow, sec.anchorHigh);
+  }).join('');
+
+  var progressDots = S.mediatorOrder.map(function(_, i) {
+    return '<div class="dot' + (i === displayIdx ? ' active' : '') + '"></div>';
+  }).join('');
+
+  var prevBtn = displayIdx > 0
+    ? '<button onclick="renderMediators(' + (displayIdx-1) + ')" style="font-size:12px;padding:6px 14px">← Back</button>'
+    : '<span style="width:80px;display:inline-block"></span>';
+
+  setModal(
+    'Task 3: Organizational practices survey (' + (displayIdx+1) + ' of ' + S.mediatorOrder.length + ')',
+    sec.intro,
+    (sec.sectionTitle ? '<div style="font-size:13px;font-weight:500;margin-bottom:14px;color:var(--ts)">' + sec.sectionTitle + '</div>' : '') +
+    items +
+    '<div class="divider"></div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+      prevBtn +
+      '<div class="slide-dots">' + progressDots + '</div>' +
+      '<button class="btn-primary" onclick="submitMediatorSection(' + displayIdx + ',' + sectionIdx + ')" style="font-size:12px;padding:6px 14px">' +
+        (isLast ? 'Submit' : 'Next →') +
+      '</button>' +
+    '</div>'
+  );
+
+  // Restore previously entered values
+  shuffledItems.forEach(function(item, qi) {
+    if (S.data['med_' + item.key]) {
+      highlightSelected('row-med_survey_q' + qi, S.data['med_' + item.key]);
+    }
+  });
+}
+
+function renderSurveyItem(qi, text, storageKey, anchorLow, anchorHigh) {
+  var rowId = storageKey ? 'row-med_survey_q'+qi : 'row-survey-'+qi;
+  var opts = '';
+  for (var i = 1; i <= 7; i++) {
+    opts += '<div class="scale-opt" onclick="selectSurveyOpt(\''+rowId+'\',\''+storageKey+'\','+i+',this)">'+i+'</div>';
+  }
+  return '<div class="survey-item">'+
+    '<div class="survey-q-text">'+(qi+1)+'. '+text+'</div>'+
+    '<div class="scale-row" id="'+rowId+'">'+opts+'</div>'+
+    '<div class="scale-anchors"><span>'+anchorLow+'</span><span>'+anchorHigh+'</span></div>'+
+  '</div>';
+}
+
+function selectSurveyOpt(rowId, storageKey, val, el) {
+  document.querySelectorAll('#'+rowId+' .scale-opt').forEach(function(b){ b.classList.remove('selected'); });
+  el.classList.add('selected');
+  if (storageKey) S.data['med_'+storageKey] = String(val);
+}
+
+function submitMediatorSection(displayIdx, sectionIdx) {
+  var sec     = STUDY_CONFIG.MEDIATORS[sectionIdx];
+  var missing = sec.items.filter(function(item){ return !S.data['med_'+item.key]; });
+
+  if (missing.length > 0) {
+    alert('Please answer all questions before continuing (' + missing.length + ' remaining).');
+    return;
+  }
+
+  if (displayIdx < S.mediatorOrder.length - 1) {
+    renderMediators(displayIdx + 1);
+    document.getElementById('modal-body').scrollTop = 0;
+  } else {
+    S.task3End  = Date.now();
+    S.task3Done = true;
+    markTask(3, true);
+    closeModal();
+    finalizeStudy();
+  }
+}
+
+/* ---- Task helpers ---- */
+function markTask(n, done) {
+  document.getElementById('check'+n).innerHTML = done ? '✓' : '';
+  document.getElementById('check'+n).className = 'check-circle' + (done ? ' done' : '');
+  document.getElementById('badge'+n).textContent = done ? 'Done' : 'Pending';
+  document.getElementById('badge'+n).className = 'badge ' + (done ? 'badge-done' : 'badge-pending');
+}
+function unlockTask(n) {
+  var row = document.getElementById('task'+n+'-row');
+  row.classList.remove('locked');
+  document.getElementById('badge'+n).textContent = 'Pending';
+  document.getElementById('badge'+n).className = 'badge badge-pending';
+}
+
+/* ---- Shared survey renderer (for manip check) ---- */
+function openSurvey(title, intro, items, namespace, onComplete) {
+  // Shuffle item order once and store
+  var indices = shuffle(items.map(function(_,i){ return i; }));
+  var shuffledItems = indices.map(function(i){ return items[i]; });
+  S.data[namespace+'_order'] = indices.map(function(i){ return items[i].key; }).join(',');
+
+  window._activeSurvey = {
+    items:        shuffledItems,
+    namespace:    namespace,
+    responses:    {},
+    cb:           onComplete,
+    currentPage:  0,
+    pageSize:     4   // ← change this number to control questions per page
+  };
+
+  renderSurveyPage();
+}
+
+function renderSurveyPage() {
+  var s        = window._activeSurvey;
+  var start    = s.currentPage * s.pageSize;
+  var end      = Math.min(start + s.pageSize, s.items.length);
+  var pageItems = s.items.slice(start, end);
+  var total    = s.items.length;
+  var isLast   = end >= total;
+  var pageNum  = s.currentPage + 1;
+  var totalPages = Math.ceil(total / s.pageSize);
+
+  var html = pageItems.map(function(item, qi) {
+  var absoluteQi = start + qi;
+  var rowId = 'row-survey-'+s.namespace+'-'+absoluteQi;
+  var opts = '';
+  for (var i = 1; i <= 7; i++) {
+    opts += '<div class="scale-opt" data-val="'+i+'" onclick="selectGenericOpt(\''+rowId+'\',\''+item.key+'\','+i+',this)">'+i+'</div>';
+  }
+  return '<div class="survey-item">'+
+    '<div class="survey-q-text">'+(absoluteQi+1)+'. '+item.text+'</div>'+
+    '<div class="scale-row" id="'+rowId+'">'+opts+'</div>'+
+    '<div class="scale-anchors"><span>Strongly disagree</span><span>Strongly agree</span></div>'+
+  '</div>';
+}).join('');
+
+  var progressDots = Array.from({length: totalPages}, function(_, i) {
+    return '<div class="dot'+(i === s.currentPage ? ' active' : '')+'"></div>';
+  }).join('');
+
+  var prevBtn = s.currentPage > 0
+    ? '<button onclick="surveyPageBack()" style="font-size:12px;padding:6px 14px">← Back</button>'
+    : '<span style="width:80px;display:inline-block"></span>';
+
+  var nextBtn = isLast
+    ? '<button class="btn-primary" onclick="submitGenericSurvey()" style="font-size:12px;padding:6px 14px">Submit</button>'
+    : '<button class="btn-primary" onclick="surveyPageNext()" style="font-size:12px;padding:6px 14px">Next →</button>';
+
+  setModal(
+    window._activeSurvey.namespace === 'manip_check' ? 'Task 1 — check-in' : window._activeSurvey.namespace,
+    'Rate your agreement with each statement (1 = Strongly disagree, 7 = Strongly agree).',
+    html+
+    '<div class="divider"></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between">'+
+      prevBtn+
+      '<div class="slide-dots">'+progressDots+'</div>'+
+      nextBtn+
+    '</div>'
+  );
+}
+
+function surveyPageNext() {
+  var s = window._activeSurvey;
+  var start = s.currentPage * s.pageSize;
+  var end   = Math.min(start + s.pageSize, s.items.length);
+  var pageItems = s.items.slice(start, end);
+  var missing = pageItems.filter(function(item){ return !s.responses[item.key]; });
+  if (missing.length) {
+    alert('Please answer all questions on this page ('+missing.length+' remaining).');
+    return;
+  }
+  s.currentPage++;
+  renderSurveyPage();
+  document.getElementById('modal-body').scrollTop = 0;
+}
+
+function surveyPageBack() {
+  window._activeSurvey.currentPage--;
+  renderSurveyPage();
+  document.getElementById('modal-body').scrollTop = 0;
+}
+function selectGenericOpt(rowId, key, val, el) {
+  document.querySelectorAll('#'+rowId+' .scale-opt').forEach(function(b){ b.classList.remove('selected'); });
+  el.classList.add('selected');
+  window._activeSurvey.responses[key] = String(val);
+}
+function submitGenericSurvey() {
+  var s = window._activeSurvey;
+  var start = s.currentPage * s.pageSize;
+  var end   = Math.min(start + s.pageSize, s.items.length);
+  var pageItems = s.items.slice(start, end);
+  var missing = pageItems.filter(function(item){ return !s.responses[item.key]; });
+  if (missing.length) {
+    alert('Please answer all questions on this page ('+missing.length+' remaining).');
+    return;
+  }
+  s.cb(s.responses);
+}
+
+
+/* ---- Finalize & send ---- */
+function finalizeStudy() {
+  var now = Date.now();
+  var base = {
+    participant_id:    S.pid,
+    participant_name:  S.participantName,
+    condition:         S.condition,
+    timestamp:         new Date().toISOString(),
+    duration_sec:      String(Math.round((now - S.startTime) / 1000)),
+    task1_duration_sec:String(S.task1Start && S.task1End ? Math.round((S.task1End-S.task1Start)/1000) : ''),
+    task2_duration_sec:String(S.task2Start && S.task2End ? Math.round((S.task2End-S.task2Start)/1000) : ''),
+    task3_duration_sec:String(S.task3Start && S.task3End ? Math.round((S.task3End-S.task3Start)/1000) : ''),
+    tabs_visited:      S.tabsVisited.join(','),
+    n_tabs_visited:    String(S.tabsVisited.length)
+  };
+  var fullData = Object.assign({}, base, S.data);
+
+  // Send to backends
+  if (STUDY_CONFIG.GOOGLE_SHEETS_URL) sendToSheets(fullData);
+  if (STUDY_CONFIG.FORMSPREE_URL)     sendToFormspree(fullData);
+  if (STUDY_CONFIG.AIRTABLE_TOKEN && STUDY_CONFIG.AIRTABLE_BASE && STUDY_CONFIG.AIRTABLE_TABLE) sendToAirtable(fullData);
+
+  showCompletion(fullData);
+}
+
+function showCompletion(data) {
+  showScreen('complete');
+  if (STUDY_CONFIG.RESEARCHER_MODE) {
+    document.getElementById('data-preview').style.display = 'block';
+    document.getElementById('data-preview').textContent   = JSON.stringify(data, null, 2);
+  }
+  if (STUDY_CONFIG.QUALTRICS_URL) {
+    var params = Object.keys(data).map(function(k){
+      return encodeURIComponent(k)+'='+encodeURIComponent(data[k]);
+    }).join('&');
+    setTimeout(function(){ window.location.href = STUDY_CONFIG.QUALTRICS_URL+'?'+params; }, 2000);
+  }
+}
+
+/* ---- Backend senders ---- */
+function sendToSheets(data) {
+  fetch(STUDY_CONFIG.GOOGLE_SHEETS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .catch(function(e){ console.warn('Sheets error',e); });
+}
+function sendToFormspree(data) {
+  fetch(STUDY_CONFIG.FORMSPREE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(data)})
+    .catch(function(e){ console.warn('Formspree error',e); });
+}
+function sendToAirtable(data) {
+  var fields = {};
+  Object.keys(data).forEach(function(k){ fields[k]=data[k]; });
+  fetch('https://api.airtable.com/v0/'+STUDY_CONFIG.AIRTABLE_BASE+'/'+encodeURIComponent(STUDY_CONFIG.AIRTABLE_TABLE),
+    {method:'POST',headers:{'Authorization':'Bearer '+STUDY_CONFIG.AIRTABLE_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({fields:fields})})
+    .catch(function(e){ console.warn('Airtable error',e); });
+}
+
+/* ---- Modal helpers ---- */
+function setModal(title, sub, body) {
+  document.getElementById('modal-body').innerHTML =
+    '<div class="modal-title">'+title+'</div>'+
+    '<div class="modal-sub">'+sub+'</div>'+body;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('modal-body').scrollTop = 0;
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+
+/* ---- Utilities ---- */
+function getPid() {
+  var params = new URLSearchParams(window.location.search);
+  var pid = params.get(STUDY_CONFIG.PID_PARAM);
+  if (pid) return pid;
+  for (var i=0; i<STUDY_CONFIG.PID_FALLBACKS.length; i++) {
+    pid = params.get(STUDY_CONFIG.PID_FALLBACKS[i]);
+    if (pid) return pid;
+  }
+  try {
+    var stored = sessionStorage.getItem('mg_pid');
+    if (stored) return stored;
+  } catch(e){}
+  var rand = 'LOCAL_'+Math.random().toString(36).slice(2,10).toUpperCase();
+  try { sessionStorage.setItem('mg_pid', rand); } catch(e){}
+  return rand;
+}
+
+function pidHash(pid) {
+  var h = 0;
+  for (var i=0; i<pid.length; i++) h = (h*31 + pid.charCodeAt(i)) & 0xFFFF;
+  return Math.abs(h);
+}
+function shuffle(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
+</script>
+</body>
+</html>
